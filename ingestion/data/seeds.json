@@ -1,0 +1,25 @@
+{
+  "base_url": "https://www.groupon.es",
+  "locations": [
+    { "slug": "madrid", "name": "Madrid" },
+    { "slug": "barcelona", "name": "Barcelona" },
+    { "slug": "valencia", "name": "Valencia" },
+    { "slug": "sevilla", "name": "Sevilla" },
+    { "slug": "bilbao", "name": "Bilbao" }
+  ],
+  "categories": [
+    { "slug": "belleza-y-relax", "name": "Belleza y relax", "url_path": "belleza-y-relax" },
+    { "slug": "cosas-que-hacer", "name": "Cosas que hacer", "url_path": "cosas-que-hacer" },
+    { "slug": "restaurantes", "name": "Restaurantes", "url_path": "restaurantes" },
+    { "slug": "escapadas", "name": "Escapadas", "url_path": "escapadas" },
+    { "slug": "cursos-y-talleres", "name": "Cursos y talleres", "url_path": "cursos-y-talleres" },
+    { "slug": "bienestar", "name": "Bienestar", "url_path": "bienestar" },
+    { "slug": "estetica", "name": "Estetica", "url_path": "estetica" },
+    { "slug": "electronica", "name": "Electronica", "url_path": "electronica" }
+  ],
+  "notes": [
+    "Listing URL pattern: {base_url}/deals/{location.slug}/{category.url_path}",
+    "If a (location, category) combo returns 0 deals, log and continue.",
+    "Some locations may not have all categories — that's expected."
+  ]
+}
