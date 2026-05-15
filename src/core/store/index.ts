@@ -103,7 +103,11 @@ export class DealStore {
     return rows.map((r) => this.toDeal(r));
   }
 
-  countDeals(filters: { categorySlug?: string; locationSlug?: string } = {}): number {
+  countDeals(filters: {
+    categorySlug?: string;
+    locationSlug?: string;
+    merchantId?: string;
+  } = {}): number {
     const where: string[] = [];
     const params: Record<string, unknown> = {};
     if (filters.categorySlug) {
@@ -113,6 +117,10 @@ export class DealStore {
     if (filters.locationSlug) {
       where.push(`location_slug = @locationSlug`);
       params.locationSlug = filters.locationSlug;
+    }
+    if (filters.merchantId) {
+      where.push(`merchant_id = @merchantId`);
+      params.merchantId = filters.merchantId;
     }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const row = this.db
@@ -136,6 +144,7 @@ export class DealStore {
       limit?: number;
       categorySlug?: string;
       locationSlug?: string;
+      merchantId?: string;
       maxPriceCents?: number;
       minRating?: number;
     } = {},
@@ -152,6 +161,10 @@ export class DealStore {
     if (options.locationSlug) {
       where.push(`d.location_slug = @locationSlug`);
       params.locationSlug = options.locationSlug;
+    }
+    if (options.merchantId) {
+      where.push(`d.merchant_id = @merchantId`);
+      params.merchantId = options.merchantId;
     }
     if (options.maxPriceCents !== undefined) {
       where.push(`d.price_cents IS NOT NULL AND d.price_cents <= @maxPriceCents`);
@@ -215,6 +228,37 @@ export class DealStore {
       name: String(r.name),
       dealCount: Number(r.deal_count ?? 0),
     }));
+  }
+
+  listMerchants(
+    options: { limit?: number; sort?: "dealCount" | "rating" | "name" } = {},
+  ): Merchant[] {
+    const limit = Math.max(1, Math.min(500, options.limit ?? 100));
+    const sort = options.sort ?? "dealCount";
+    const orderBy =
+      sort === "name"
+        ? `name ASC`
+        : sort === "rating"
+        ? `rating_avg DESC NULLS LAST, deal_count DESC`
+        : `deal_count DESC, name ASC`;
+    const rows = this.db
+      .prepare(
+        `SELECT id, name, rating_avg, deal_count FROM merchants ORDER BY ${orderBy} LIMIT ${limit}`,
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: String(r.id),
+      name: String(r.name),
+      ratingAvg: r.rating_avg === null ? null : Number(r.rating_avg),
+      dealCount: Number(r.deal_count ?? 0),
+    }));
+  }
+
+  countMerchants(): number {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM merchants`)
+      .get() as { n: number };
+    return row.n;
   }
 
   getMerchant(id: string): Merchant | null {

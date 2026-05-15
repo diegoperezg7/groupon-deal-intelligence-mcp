@@ -8,6 +8,8 @@ import { buildAnalyzeCommand } from "./commands/analyze.js";
 import { buildCategoryCommand } from "./commands/category.js";
 import { buildCategoriesCommand } from "./commands/categories.js";
 import { buildLocationsCommand } from "./commands/locations.js";
+import { buildMerchantsCommand } from "./commands/merchants.js";
+import { buildOverviewCommand } from "./commands/overview.js";
 import { buildIngestCommand } from "./commands/ingest.js";
 import { buildDoctorCommand } from "./commands/doctor.js";
 
@@ -28,6 +30,8 @@ program.addCommand(buildAnalyzeCommand());
 program.addCommand(buildCategoryCommand());
 program.addCommand(buildCategoriesCommand());
 program.addCommand(buildLocationsCommand());
+program.addCommand(buildMerchantsCommand());
+program.addCommand(buildOverviewCommand());
 program.addCommand(buildIngestCommand());
 program.addCommand(buildDoctorCommand());
 

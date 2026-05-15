@@ -24,6 +24,12 @@ const InputSchema = z.object({
     .describe(
       "Category slug to filter by — e.g. belleza, gastronomia, bienestar, escapadas, cosas-que-hacer, cursos. Use list_categories to discover slugs.",
     ),
+  merchant: z
+    .string()
+    .optional()
+    .describe(
+      "Merchant id slug to restrict results to a single merchant (e.g. 'acuario-de-zaragoza'). Use list_merchants to discover available ids.",
+    ),
   maxPriceEuros: z
     .number()
     .positive()
@@ -88,6 +94,7 @@ export function registerSearchDeals(
           query: args.query,
           locationSlug: args.location,
           categorySlug: args.category,
+          merchantId: args.merchant,
           maxPriceCents:
             args.maxPriceEuros !== undefined
               ? Math.round(args.maxPriceEuros * 100)

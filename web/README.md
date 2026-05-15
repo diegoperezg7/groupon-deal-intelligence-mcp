@@ -14,7 +14,7 @@ A small web chat that talks to the existing MCP server over Streamable HTTP, wit
                                                                        ▼
                                                        ┌──────────────────────────────┐
                                                        │  MCP server in ../           │
-                                                       │  (unchanged, 8 tools)        │
+                                                       │  (unchanged, 10 tools)       │
                                                        └──────────────────────────────┘
 ```
 

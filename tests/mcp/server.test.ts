@@ -11,6 +11,8 @@ import { registerSearchDeals } from "../../src/mcp/tools/searchDeals.js";
 import { registerGetDealDetails } from "../../src/mcp/tools/getDealDetails.js";
 import { registerListCategories } from "../../src/mcp/tools/listCategories.js";
 import { registerListLocations } from "../../src/mcp/tools/listLocations.js";
+import { registerListMerchants } from "../../src/mcp/tools/listMerchants.js";
+import { registerCatalogOverview } from "../../src/mcp/tools/catalogOverview.js";
 import { registerCompareDeals } from "../../src/mcp/tools/compareDeals.js";
 import { registerFindSimilarDeals } from "../../src/mcp/tools/findSimilarDeals.js";
 import { registerAnalyzeMarket } from "../../src/mcp/tools/analyzeMarket.js";
@@ -65,6 +67,7 @@ beforeAll(async () => {
   seed.prepare("INSERT INTO categories(slug,name) VALUES (?,?)").run("bienestar", "Bienestar");
   seed.prepare("INSERT INTO locations(slug,name) VALUES (?,?)").run("madrid", "Madrid");
   seed.prepare("INSERT INTO merchants(id,name) VALUES (?,?)").run("blisstopia", "Blisstopia");
+  seed.prepare("INSERT INTO merchants(id,name) VALUES (?,?)").run("alma-spa", "Alma Spa");
   seed
     .prepare(
       `INSERT INTO deals(id,url,title,description,merchant_id,merchant_name,
@@ -116,10 +119,42 @@ beforeAll(async () => {
       "{}",
     );
   seed
+    .prepare(
+      `INSERT INTO deals(id,url,title,description,merchant_id,merchant_name,
+         category_slug,location_slug,price_cents,original_price_cents,discount_pct,
+         rating,reviews_count,image_url,scraped_at,raw_json)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      "test-deal-3",
+      "https://www.groupon.es/deals/test-deal-3",
+      "Ritual de spa para parejas",
+      "Circuito termal con masaje",
+      "alma-spa",
+      "Alma Spa",
+      "bienestar",
+      "madrid",
+      6999,
+      9999,
+      30,
+      4.8,
+      210,
+      null,
+      new Date().toISOString(),
+      "{}",
+    );
+  seed
     .prepare(`UPDATE categories SET deal_count=(SELECT COUNT(*) FROM deals WHERE category_slug=categories.slug)`)
     .run();
   seed
     .prepare(`UPDATE locations SET deal_count=(SELECT COUNT(*) FROM deals WHERE location_slug=locations.slug)`)
+    .run();
+  seed
+    .prepare(
+      `UPDATE merchants SET
+         deal_count=(SELECT COUNT(*) FROM deals WHERE merchant_id=merchants.id),
+         rating_avg=(SELECT AVG(rating) FROM deals WHERE merchant_id=merchants.id AND rating IS NOT NULL)`,
+    )
     .run();
 
   // Add an embedding for test-deal-1 so similarity/search smoke tests
@@ -135,6 +170,9 @@ beforeAll(async () => {
   seed
     .prepare("INSERT INTO deal_vectors(deal_id, embedding) VALUES (?, ?)")
     .run("test-deal-2", embedBuffer);
+  seed
+    .prepare("INSERT INTO deal_vectors(deal_id, embedding) VALUES (?, ?)")
+    .run("test-deal-3", embedBuffer);
 
   // Build the server with the fake embeddings provider, registering the
   // FULL surface so the integration test catches breakage across tools,
@@ -151,6 +189,8 @@ beforeAll(async () => {
   registerCategoryInsights(serverInstance, { store });
   registerListCategories(serverInstance, { store });
   registerListLocations(serverInstance, { store });
+  registerListMerchants(serverInstance, { store });
+  registerCatalogOverview(serverInstance, { store });
   registerDealResource(serverInstance, { store });
   registerCategoryResource(serverInstance, { store });
   registerLocationResource(serverInstance, { store });
@@ -174,7 +214,7 @@ afterAll(async () => {
 });
 
 describe("MCP server integration", () => {
-  it("lists all 8 tools", async () => {
+  it("lists all 10 tools", async () => {
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
     for (const expected of [
@@ -186,6 +226,8 @@ describe("MCP server integration", () => {
       "category_insights",
       "list_categories",
       "list_locations",
+      "list_merchants",
+      "get_catalog_overview",
     ]) {
       expect(names).toContain(expected);
     }
@@ -330,5 +372,79 @@ describe("MCP server integration", () => {
     const text = String((res.messages[0].content as { text: string }).text);
     expect(text).toContain("bienestar");
     expect(text).toContain("madrid");
+  });
+
+  it("list_merchants returns merchants sorted by dealCount by default", async () => {
+    const result = await client.callTool({
+      name: "list_merchants",
+      arguments: {},
+    });
+    const structured = result.structuredContent as {
+      count: number;
+      merchants: { id: string; dealCount: number }[];
+    };
+    expect(structured.count).toBe(2);
+    expect(structured.merchants[0].id).toBe("blisstopia"); // 2 deals > alma-spa's 1
+    expect(structured.merchants[0].dealCount).toBeGreaterThanOrEqual(
+      structured.merchants[1].dealCount,
+    );
+  });
+
+  it("list_merchants honours sort=name", async () => {
+    const result = await client.callTool({
+      name: "list_merchants",
+      arguments: { sort: "name" },
+    });
+    const structured = result.structuredContent as {
+      merchants: { name: string }[];
+    };
+    expect(structured.merchants[0].name).toBe("Alma Spa");
+    expect(structured.merchants[1].name).toBe("Blisstopia");
+  });
+
+  it("list_merchants honours limit", async () => {
+    const result = await client.callTool({
+      name: "list_merchants",
+      arguments: { limit: 1 },
+    });
+    const structured = result.structuredContent as { merchants: unknown[] };
+    expect(structured.merchants).toHaveLength(1);
+  });
+
+  it("get_catalog_overview returns totals and top buckets", async () => {
+    const result = await client.callTool({
+      name: "get_catalog_overview",
+      arguments: {},
+    });
+    const structured = result.structuredContent as {
+      totals: { deals: number; categories: number; locations: number; merchants: number };
+      prices: { count: number; medianEuros: number | null };
+      topCategories: { slug: string }[];
+      topLocations: { slug: string }[];
+      topMerchants: { id: string }[];
+      freshness: { earliestScrapedAt: string | null; latestScrapedAt: string | null };
+    };
+    expect(structured.totals.deals).toBe(3);
+    expect(structured.totals.merchants).toBe(2);
+    expect(structured.topCategories.some((c) => c.slug === "bienestar")).toBe(true);
+    expect(structured.topLocations.some((l) => l.slug === "madrid")).toBe(true);
+    expect(structured.topMerchants.some((m) => m.id === "blisstopia")).toBe(true);
+    expect(structured.prices.count).toBe(3);
+    expect(structured.freshness.latestScrapedAt).not.toBeNull();
+  });
+
+  it("search_deals respects the merchant filter", async () => {
+    const result = await client.callTool({
+      name: "search_deals",
+      arguments: { query: "spa", merchant: "alma-spa", limit: 5 },
+    });
+    const structured = result.structuredContent as {
+      count: number;
+      results: { id: string }[];
+    };
+    expect(structured.count).toBeGreaterThan(0);
+    for (const r of structured.results) {
+      expect(r.id).toBe("test-deal-3");
+    }
   });
 });

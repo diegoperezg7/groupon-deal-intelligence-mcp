@@ -15,6 +15,8 @@ import { registerAnalyzeMarket } from "./tools/analyzeMarket.js";
 import { registerCategoryInsights } from "./tools/categoryInsights.js";
 import { registerListCategories } from "./tools/listCategories.js";
 import { registerListLocations } from "./tools/listLocations.js";
+import { registerListMerchants } from "./tools/listMerchants.js";
+import { registerCatalogOverview } from "./tools/catalogOverview.js";
 
 import { registerDealResource } from "./resources/dealResource.js";
 import { registerCategoryResource } from "./resources/categoryResource.js";
@@ -45,6 +47,11 @@ Prefer the high-level tools (analyze_market, category_insights,
 compare_deals) when answering merchant-oriented questions; prefer
 search_deals + get_deal_details when answering shopper-oriented
 questions about a specific need.
+
+For orientation, you may call get_catalog_overview once at the start of
+a session to get totals, price/discount distribution and top buckets
+in a single round-trip. Use list_merchants to discover merchant ids
+before filtering search_deals by merchant.
 `.trim();
 
 function buildServer(deps: {
@@ -70,6 +77,8 @@ function buildServer(deps: {
   registerCategoryInsights(server, { store: deps.store });
   registerListCategories(server, { store: deps.store });
   registerListLocations(server, { store: deps.store });
+  registerListMerchants(server, { store: deps.store });
+  registerCatalogOverview(server, { store: deps.store });
 
   // Resources
   registerDealResource(server, { store: deps.store });

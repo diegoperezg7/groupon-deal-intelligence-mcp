@@ -24,6 +24,7 @@ export {
   detectUnderservedSubsegments,
 } from "./market.js";
 export { getCategoryInsights } from "./category.js";
+export { buildCatalogOverview } from "./overview.js";
 export {
   scoreDeal,
   scoreDiscount,
@@ -35,3 +36,4 @@ export {
 export * from "./types/deal.js";
 export * from "./types/market.js";
 export * from "./types/scoring.js";
+export * from "./types/overview.js";

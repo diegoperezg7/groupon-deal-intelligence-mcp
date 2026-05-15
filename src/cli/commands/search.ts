@@ -9,6 +9,7 @@ export function buildSearchCommand(): Command {
     .argument("[query...]", "natural-language query")
     .option("-l, --location <slug>", "filter by city slug")
     .option("-c, --category <slug>", "filter by category slug")
+    .option("-m, --merchant <id>", "filter by merchant id slug")
     .option("--max-price <eur>", "max price in EUR", parseFloat)
     .option("--min-rating <r>", "minimum rating (0..5)", parseFloat)
     .option("-n, --limit <n>", "max results", (v) => parseInt(v, 10), 10)
@@ -30,6 +31,7 @@ export function buildSearchCommand(): Command {
             query,
             locationSlug: opts.location,
             categorySlug: opts.category,
+            merchantId: opts.merchant,
             maxPriceCents:
               opts.maxPrice !== undefined ? Math.round(opts.maxPrice * 100) : undefined,
             minRating: opts.minRating,

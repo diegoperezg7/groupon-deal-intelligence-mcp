@@ -6,6 +6,7 @@ export interface SearchOptions {
   query: string;
   locationSlug?: string;
   categorySlug?: string;
+  merchantId?: string;
   maxPriceCents?: number;
   minRating?: number;
   limit?: number;
@@ -34,6 +35,7 @@ export async function searchDeals(
       .listDeals({
         locationSlug: options.locationSlug,
         categorySlug: options.categorySlug,
+        merchantId: options.merchantId,
         maxPriceCents: options.maxPriceCents,
         minRating: options.minRating,
         limit,
@@ -47,6 +49,7 @@ export async function searchDeals(
     limit,
     locationSlug: options.locationSlug,
     categorySlug: options.categorySlug,
+    merchantId: options.merchantId,
     maxPriceCents: options.maxPriceCents,
     minRating: options.minRating,
   });

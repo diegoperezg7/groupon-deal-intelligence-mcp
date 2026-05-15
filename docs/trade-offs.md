@@ -40,13 +40,13 @@ The 1536-dim slot is chosen so OpenAI `text-embedding-3-small` fits natively. Sm
 
 If we committed to one provider in production I'd drop to the native dimension.
 
-## Tests: 31 assertions, not 80
+## Tests: 36 assertions, not 80
 
 Coverage is highest where mistakes are most expensive:
 
 - **Scoring** (12 assertions) — the only place arithmetic decisions live. Every component plus end-to-end ranking sanity.
 - **Market analytics** (5 assertions) — price stats, discount bucketing, copy-pattern extraction.
-- **MCP integration** (14 assertions) — all 8 tools, 3 resource templates, 3 prompts and the readOnlyHint annotation contract, all through the official `InMemoryTransport`.
+- **MCP integration** (19 assertions) — all 10 tools, 3 resource templates, 3 prompts and the readOnlyHint annotation contract, all through the official `InMemoryTransport`.
 
 What's missing: parser tests on real HTML fixtures (would require committing scraped pages, which I didn't want to do for IP reasons); CLI tests via `execa` (the CLI is glue, the hard work is in `core/` and that has tests); load tests on the semantic search (it's KNN over 52 rows; load isn't the concern at this stage).
 
@@ -64,7 +64,7 @@ The MCP server's `instructions` (what the LLM sees about what the server is for)
 
 ## What stayed in scope
 
-- All 8 tools fully implemented with Zod input AND output schemas.
+- All 10 tools fully implemented with Zod input AND output schemas.
 - Both interfaces (MCP + CLI) sharing one core.
 - A real catalogue (52 deals from real groupon.es), not synthetic.
 - Provider abstraction.

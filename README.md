@@ -73,8 +73,8 @@ You point an MCP-compatible client at this server (Claude Desktop, Claude Code, 
 
 | Interface | Where it lives | Who consumes it | Why it's here |
 |---|---|---|---|
-| **MCP server** *(primary deliverable)* | [`src/mcp/`](src/mcp) — stdio + Streamable HTTP | Claude Desktop, Cursor, the MCP Inspector, any MCP client | What the brief asked for. 8 tools, 3 resources, 3 prompts. |
-| **CLI companion** | [`src/cli/`](src/cli) — `groupon-intel` | Engineers, CI pipelines, terminals | Token-cost-free way to drive the same intelligence. Easy to script and assert on. |
+| **MCP server** *(primary deliverable)* | [`src/mcp/`](src/mcp) — stdio + Streamable HTTP | Claude Desktop, Cursor, the MCP Inspector, any MCP client | What the brief asked for. 10 tools, 3 resources, 3 prompts. |
+| **CLI companion** | [`src/cli/`](src/cli) — `groupon-intel` | Engineers, CI pipelines, terminals | Token-cost-free way to drive the same intelligence. 12 commands, easy to script and assert on. |
 | **Web chat demo** | [`web/`](web) — Vite + React + Express BFF + xAI Grok | Humans, demo audiences | Closes the loop: an LLM in a browser invoking the MCP server's tools in real time. |
 
 All three share **the same `core/` engine**. The MCP server is exposed today over **stdio** *and* over **Streamable HTTP** (the spec's successor to SSE). The web demo's BFF talks to that HTTP transport — it does **not** import `core/` directly, so the round-trip is the proof that the third interface is real and not just a renamed CLI.
@@ -104,8 +104,8 @@ flowchart LR
     subgraph Runtime["TypeScript runtime"]
         direction TB
         Core["core/<br/>interface-agnostic intelligence"]
-        MCP["mcp/<br/>8 tools + 3 resources + 3 prompts<br/>stdio + Streamable HTTP"]
-        CLI["cli/<br/>10 commands · 3 formats"]
+        MCP["mcp/<br/>10 tools + 3 resources + 3 prompts<br/>stdio + Streamable HTTP"]
+        CLI["cli/<br/>12 commands · 3 formats"]
         Core --> MCP
         Core --> CLI
     end
@@ -233,7 +233,7 @@ All green. The MCP server is ready to serve.
 
 ### 5. Connect Claude Desktop
 
-Copy the snippet from [`scripts/claude-desktop-config.json`](scripts/claude-desktop-config.json) into your Claude Desktop config (substituting absolute paths), then restart Claude Desktop. The server appears as **groupon-es-deal-intelligence** with 8 tools, 3 resources and 3 slash-command prompts.
+Copy the snippet from [`scripts/claude-desktop-config.json`](scripts/claude-desktop-config.json) into your Claude Desktop config (substituting absolute paths), then restart Claude Desktop. The server appears as **groupon-es-deal-intelligence** with 10 tools, 3 resources and 3 slash-command prompts.
 
 ---
 
@@ -250,6 +250,8 @@ flowchart TB
         T6[category_insights]
         T7[list_categories]
         T8[list_locations]
+        T9[list_merchants]
+        T10[get_catalog_overview]
     end
     subgraph Resources
         R1["groupon://deal/{id}"]
@@ -264,7 +266,7 @@ flowchart TB
     classDef tool fill:#dcfce7,stroke:#16a34a
     classDef res fill:#fef3c7,stroke:#d97706
     classDef prom fill:#f5f3ff,stroke:#9F00FF
-    class T1,T2,T3,T4,T5,T6,T7,T8 tool
+    class T1,T2,T3,T4,T5,T6,T7,T8,T9,T10 tool
     class R1,R2,R3 res
     class P1,P2,P3 prom
 ```
@@ -273,7 +275,7 @@ flowchart TB
 
 | Tool                  | Purpose                                                                                                          | Annotations                                |
 |-----------------------|------------------------------------------------------------------------------------------------------------------|--------------------------------------------|
-| `search_deals`        | Semantic + filtered search (query, location, category, max price, min rating).                                   | readOnly, idempotent                       |
+| `search_deals`        | Semantic + filtered search (query, location, category, **merchant**, max price, min rating).                      | readOnly, idempotent                       |
 | `get_deal_details`    | Full normalised record for a deal by id or URL, plus its merchant.                                                | readOnly, idempotent                       |
 | `find_similar_deals`  | Embedding-based KNN over a reference deal's own vector (no re-embedding round-trip).                              | readOnly, idempotent                       |
 | `compare_deals`       | Score and rank 2–10 deals side-by-side with a deterministic attractiveness score (discount, rating, popularity, price). | readOnly, idempotent                       |
@@ -281,6 +283,8 @@ flowchart TB
 | `category_insights`   | Cross-location breakdown for one category.                                                                       | readOnly, idempotent                       |
 | `list_categories`     | Discovery: every category + deal count.                                                                          | readOnly                                   |
 | `list_locations`      | Discovery: every location + deal count.                                                                          | readOnly                                   |
+| `list_merchants`      | Discovery: merchants in the catalogue with deal count and rating. Sort by `dealCount` / `rating` / `name`.       | readOnly, idempotent                       |
+| `get_catalog_overview`| One-shot bootstrap snapshot: totals, price/discount distribution, top categories/locations/merchants, freshness. | readOnly, idempotent                       |
 
 Every tool declares **both** a Zod input schema and output schema, and returns `structuredContent` so MCP-aware clients render typed data (not stringified JSON).
 
@@ -310,7 +314,7 @@ $ groupon-intel --help
 groupon-intel  CLI companion to the groupon-deal-intelligence MCP server.
 
 Commands:
-  search [query...]      semantic search
+  search [query...]      semantic search (filters: -l, -c, -m, --max-price, --min-rating)
   deal <id-or-url>       show one deal
   similar <id-or-url>    KNN over a reference deal's embedding
   compare <ids...>       rank 2–10 deals
@@ -318,6 +322,8 @@ Commands:
   category <slug>        cross-location insights for a category
   categories             list every category in the catalogue
   locations              list every location in the catalogue
+  merchants              list merchants with deal count and rating
+  overview               one-shot catalogue snapshot (totals + top buckets)
   ingest                 run the Python pipeline end-to-end
   doctor                 health check (config, store, embeddings, search)
 ```
@@ -361,7 +367,7 @@ sequenceDiagram
     User->>UI: "I run a spa in Madrid charging 60€..."
     UI->>BFF: POST /chat (SSE)
     BFF->>MCP: tools/list (JSON-RPC)
-    MCP-->>BFF: 8 tools + schemas
+    MCP-->>BFF: 10 tools + schemas
     BFF->>LLM: chat.completions(messages, tools)
     LLM-->>BFF: tool_call analyze_market{cat,loc}
     BFF-->>UI: event: tool_call
@@ -511,14 +517,14 @@ groupon-deal-intelligence-mcp/
 │   └── src/groupon_ingest/    scraper, parsers, normalizer, embedder, cli
 ├── src/
 │   ├── core/                  intelligence layer (search, scoring, market, store)
-│   ├── mcp/                   MCP server: 8 tools, 3 resources, 3 prompts
-│   ├── cli/                   commander-based CLI: 10 commands, 3 formats
+│   ├── mcp/                   MCP server: 10 tools, 3 resources, 3 prompts
+│   ├── cli/                   commander-based CLI: 12 commands, 3 formats
 │   └── shared/                pino → stderr, zod config, McpError helpers
 ├── data/
 │   ├── sample-deals.json      77 real deals, committed for reviewers
 │   └── deals.sqlite           gitignored — regenerated by ingest
 ├── docs/                      architecture, ai-usage, trade-offs, next-steps
-├── tests/                     vitest: 31 assertions across core + MCP
+├── tests/                     vitest: 36 assertions across core + MCP
 ├── Dockerfile.mcp             Node 22 runtime image
 ├── Dockerfile.ingest          Scrapling-based ingest image
 └── docker-compose.yml         two-step pipeline
