@@ -118,20 +118,65 @@ def _extract_jsonld_blocks(page) -> list[Any]:
     return blocks
 
 
+def _block_matches_type(block: dict[str, Any], type_keyword: str) -> bool:
+    types = block.get("@type")
+    if isinstance(types, str):
+        types = [types]
+    if not isinstance(types, list):
+        return False
+    lower = type_keyword.lower()
+    return any(lower in str(t).lower() for t in types)
+
+
+def _find_blocks_by_type(blocks: list[Any], type_keyword: str) -> list[dict[str, Any]]:
+    """Return every JSON-LD block whose @type matches the keyword."""
+    return [b for b in blocks if isinstance(b, dict) and _block_matches_type(b, type_keyword)]
+
+
 def _find_block(blocks: list[Any], type_keywords: list[str]) -> dict[str, Any] | None:
-    """Return the first JSON-LD block whose @type matches any keyword."""
-    lower_keywords = [k.lower() for k in type_keywords]
-    for blk in blocks:
-        if not isinstance(blk, dict):
+    """Return the first block matching any keyword, scanned in priority order.
+
+    Unlike a flat "first wins" pass, we iterate the keywords list outermost so
+    callers can express a priority — ProductGroup beats LocalBusiness, etc.
+    """
+    for kw in type_keywords:
+        matches = _find_blocks_by_type(blocks, kw)
+        if matches:
+            return matches[0]
+    return None
+
+
+def _extract_offers(product: dict[str, Any]) -> dict[str, Any] | None:
+    """Find the price-bearing offer inside a Product/ProductGroup.
+
+    Try, in order:
+      1. product["offers"] top-level
+      2. product["hasVariant"][i]["offers"] — what ProductGroups use
+      3. product["hasVariant"][i] itself if it carries price/highPrice
+    Return a single dict (Schema.org Offer-like) or None.
+    """
+    direct = product.get("offers")
+    if isinstance(direct, list) and direct:
+        first = direct[0]
+        if isinstance(first, dict):
+            return first
+    if isinstance(direct, dict):
+        return direct
+
+    variants = product.get("hasVariant") or []
+    if not isinstance(variants, list):
+        return None
+    for v in variants:
+        if not isinstance(v, dict):
             continue
-        types = blk.get("@type")
-        if isinstance(types, str):
-            types = [types]
-        if not isinstance(types, list):
-            continue
-        for t in types:
-            if any(k in str(t).lower() for k in lower_keywords):
-                return blk
+        offers = v.get("offers")
+        if isinstance(offers, list) and offers and isinstance(offers[0], dict):
+            return offers[0]
+        if isinstance(offers, dict):
+            return offers
+        # Some variants carry price/highPrice/lowPrice flatly on the variant
+        if any(k in v for k in ("price", "lowPrice", "highPrice")):
+            return v
     return None
 
 
@@ -150,13 +195,20 @@ def _normalise_image(img: Any) -> str | None:
 
 
 def _extract_from_jsonld(page, url: str) -> dict[str, Any]:
-    """Return a partial dict of fields extracted from JSON-LD."""
+    """Return a partial dict of fields extracted from JSON-LD.
+
+    Strategy:
+    - Use ProductGroup / Product first (it carries name, description, brand,
+      aggregateRating and — via hasVariant — the offers we want).
+    - Fall back to LocalBusiness / HealthAndBeautyBusiness for merchant and
+      rating data if the product block didn't supply them.
+    """
     blocks = _extract_jsonld_blocks(page)
     out: dict[str, Any] = {}
 
-    product = _find_block(
-        blocks, ["ProductGroup", "Product", "HealthAndBeautyBusiness", "LocalBusiness", "Offer"]
-    )
+    # 1. Prefer ProductGroup / Product / Offer (in that order)
+    product = _find_block(blocks, ["ProductGroup", "Product", "Offer"])
+
     if product:
         out["title"] = product.get("name")
         out["description"] = product.get("description")
@@ -169,19 +221,23 @@ def _extract_from_jsonld(page, url: str) -> dict[str, Any]:
         elif isinstance(brand, str):
             out["merchant_name"] = brand
 
-        # Offers (price)
-        offers = product.get("offers")
-        if isinstance(offers, list) and offers:
-            offers = offers[0]
+        # Offers: top-level OR inside hasVariant
+        offers = _extract_offers(product)
         if isinstance(offers, dict):
-            price = offers.get("price") or offers.get("lowPrice")
+            price = (
+                offers.get("price")
+                or offers.get("lowPrice")
+                or offers.get("priceSpecification", {}).get("price")
+                if isinstance(offers.get("priceSpecification"), dict)
+                else offers.get("price") or offers.get("lowPrice")
+            )
             if price is not None:
                 out["price_raw"] = f"{price} €"
             high_price = offers.get("highPrice")
             if high_price:
                 out["original_price_raw"] = f"{high_price} €"
 
-        # Aggregate rating
+        # Aggregate rating on the product
         rating = product.get("aggregateRating")
         if isinstance(rating, dict):
             val = rating.get("ratingValue")
@@ -191,7 +247,27 @@ def _extract_from_jsonld(page, url: str) -> dict[str, Any]:
             if cnt is not None:
                 out["reviews_count_raw"] = str(cnt)
 
-    # Breadcrumb gives us category and (sometimes) location
+    # 2. Fall back to LocalBusiness / HealthAndBeautyBusiness for merchant + rating
+    business = _find_block(blocks, ["HealthAndBeautyBusiness", "LocalBusiness", "Restaurant"])
+    if business:
+        if not out.get("merchant_name"):
+            out["merchant_name"] = business.get("name")
+        if not out.get("description"):
+            out["description"] = business.get("description")
+        if not out.get("image_url"):
+            out["image_url"] = _normalise_image(business.get("image"))
+        if not out.get("rating_raw"):
+            biz_rating = business.get("aggregateRating")
+            if isinstance(biz_rating, dict):
+                val = biz_rating.get("ratingValue")
+                if val is not None:
+                    out["rating_raw"] = str(val)
+                cnt = biz_rating.get("reviewCount") or biz_rating.get("ratingCount")
+                if cnt is not None:
+                    out["reviews_count_raw"] = str(cnt)
+        # Business doesn't carry price; nothing else to pull here.
+
+    # 3. Breadcrumb gives us category and (sometimes) location
     crumb = _find_block(blocks, ["BreadcrumbList"])
     if crumb:
         items = crumb.get("itemListElement") or []

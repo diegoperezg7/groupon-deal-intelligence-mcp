@@ -57,6 +57,11 @@ def scrape_cmd(
     max_per_listing: int = typer.Option(
         10, "--max", "-m", help="Max deal URLs to take from each listing"
     ),
+    sitemap_target: int = typer.Option(
+        0,
+        "--sitemap",
+        help="Also pull up to N deal URLs from the sitemap (0 disables the sitemap pass).",
+    ),
     no_headless: bool = typer.Option(
         False, "--no-headless", help="Run with a visible browser (debugging)"
     ),
@@ -64,8 +69,10 @@ def scrape_cmd(
 ) -> None:
     """Scrape deals from groupon.es using Scrapling.
 
-    Walks each /ofertas/{slug} listing in seeds, deduplicates deal URLs,
-    visits each unique deal page once and writes a normalized JSON.
+    Discovery is the union of:
+      - URLs found on each /ofertas/{slug} listing (filtered by --kinds/--slugs)
+      - Up to --sitemap N URLs sampled from groupon.es' sitemap index
+    The deal page is then visited at most once per unique URL.
     """
     _setup_logging(log_level)
 
@@ -74,19 +81,20 @@ def scrape_cmd(
     slugs_list = None if slugs == "all" else [s.strip() for s in slugs.split(",")]
 
     listings = build_listings(seeds_data, filter_kinds=kinds_list, filter_slugs=slugs_list)
-    if not listings:
-        console.print("[red]No listings matched the filters.[/red]")
+    if not listings and sitemap_target == 0:
+        console.print("[red]No listings matched the filters and sitemap-target=0.[/red]")
         raise typer.Exit(code=1)
 
     console.print(
         f"[bold cyan]Planning {len(listings)} listing fetches "
-        f"({max_per_listing} deals/listing max)[/bold cyan]"
+        f"({max_per_listing} deals/listing max) + {sitemap_target} sitemap URLs[/bold cyan]"
     )
 
     result = scrape(
         listings,
         base_url=seeds_data["base_url"],
         max_deals_per_listing=max_per_listing,
+        sitemap_target=sitemap_target,
         headless=not no_headless,
     )
 

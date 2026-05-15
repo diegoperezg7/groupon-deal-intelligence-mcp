@@ -40,16 +40,41 @@ def _derive_slug_from_url(url: str) -> str:
 
 
 def parse_price_cents(raw: str | None) -> int | None:
-    """Spanish currency format: '29,99 €' → 2999. Returns None if unparseable."""
+    """Parse a price string into integer cents.
+
+    Handles three real-world formats we see on groupon.es / its JSON-LD:
+      - Spanish-formatted DOM text: '29,99 €' or '1.234,56 €'
+      - Schema.org JSON-LD numeric strings: '59.99' or '59.99 €'
+      - Bare numbers without decimals: '60' or '60 €'
+    """
     if not raw:
         return None
-    # Find the first number with optional decimal (comma or dot)
-    match = re.search(r"(\d{1,4}(?:[.,]\d{1,2})?)", raw.replace(".", ""))
-    if not match:
+    # Keep digits and decimal/thousands separators only
+    cleaned = re.sub(r"[^\d.,]", "", raw)
+    if not cleaned:
         return None
-    number_str = match.group(1).replace(",", ".")
+
+    has_dot = "." in cleaned
+    has_comma = "," in cleaned
+
+    if has_dot and has_comma:
+        # "1.234,99" — Spanish format. Drop dots (thousands), comma is decimal.
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif has_comma:
+        # "29,99" → "29.99"
+        cleaned = cleaned.replace(",", ".")
+    elif has_dot:
+        # Either "59.99" (decimal) or "1.234" (thousands, no decimal).
+        parts = cleaned.split(".")
+        if len(parts) == 2 and 1 <= len(parts[1]) <= 2:
+            # decimal — leave it alone
+            pass
+        else:
+            # Treat all dots as thousands separators ("1.234" or "1.234.567")
+            cleaned = cleaned.replace(".", "")
+
     try:
-        return int(round(float(number_str) * 100))
+        return int(round(float(cleaned) * 100))
     except ValueError:
         return None
 
@@ -59,6 +84,25 @@ def parse_percent(raw: str | None) -> int | None:
     if not raw:
         return None
     match = re.search(r"(\d{1,3})\s*%", raw)
+    if not match:
+        return None
+    try:
+        pct = int(match.group(1))
+        return max(0, min(100, pct))
+    except ValueError:
+        return None
+
+
+def discount_from_title(title: str | None) -> int | None:
+    """Many groupon.es deal titles include the discount inline, e.g.:
+        '... ahorra hasta un 78%'
+        '... con un 50% de descuento'
+        '... -60% de descuento'
+    Use as a fallback when JSON-LD/DOM doesn't expose a discount field.
+    """
+    if not title:
+        return None
+    match = re.search(r"(\d{1,3})\s*%", title)
     if not match:
         return None
     try:
@@ -122,6 +166,22 @@ def normalize_deal(scraped: ScrapedDeal) -> NormalizedDeal | None:
     slug = _derive_slug_from_url(str(scraped.url))
     merchant_id = _slugify(scraped.merchant_name) if scraped.merchant_name else None
 
+    price_cents = parse_price_cents(scraped.price_raw)
+    original_price_cents = parse_price_cents(scraped.original_price_raw)
+    discount_pct = parse_percent(scraped.discount_raw)
+
+    # Fallback A: when only one of (price, original_price) and the title quotes
+    # a discount inline, derive the missing one.
+    if discount_pct is None:
+        discount_pct = discount_from_title(scraped.title)
+    if (
+        original_price_cents is None
+        and price_cents is not None
+        and discount_pct is not None
+        and 0 < discount_pct < 100
+    ):
+        original_price_cents = int(round(price_cents / (1 - discount_pct / 100)))
+
     return NormalizedDeal(
         id=slug,
         url=str(scraped.url),  # type: ignore[arg-type]  # pydantic re-validates
@@ -131,9 +191,9 @@ def normalize_deal(scraped: ScrapedDeal) -> NormalizedDeal | None:
         merchant_name=scraped.merchant_name.strip() if scraped.merchant_name else None,
         category_slug=scraped.category_slug,
         location_slug=scraped.location_slug,
-        price_cents=parse_price_cents(scraped.price_raw),
-        original_price_cents=parse_price_cents(scraped.original_price_raw),
-        discount_pct=parse_percent(scraped.discount_raw),
+        price_cents=price_cents,
+        original_price_cents=original_price_cents,
+        discount_pct=discount_pct,
         rating=parse_rating(scraped.rating_raw),
         reviews_count=parse_reviews_count(scraped.reviews_count_raw),
         image_url=scraped.image_url,  # type: ignore[arg-type]

@@ -22,11 +22,11 @@ The pipeline is a CLI script. To productionise I'd:
 - Mark deals not seen in the last N runs as `inactive` instead of deleting.
 - Emit metrics (deals scraped, errors, duration) to a sink so a human can see the trend.
 
-## Transport: stdio fully wired, HTTP stub
+## Transport: both stdio and Streamable HTTP wired
 
-Streamable HTTP is the spec's recommendation for non-Desktop clients. I implemented stdio end-to-end (it's what Claude Desktop and the Inspector use) but the HTTP path throws a friendly error. Finishing it is a ~30-minute job — the `StreamableHTTPServerTransport` from `@modelcontextprotocol/sdk` slots in next to the existing stdio code.
+Both transports work. `MCP_TRANSPORT=stdio` is the default and what Claude Desktop / the Inspector use; `MCP_TRANSPORT=http` brings up a stateless Streamable HTTP listener at `/mcp` on the configured port (3333 by default).
 
-**Why I cut it**: it would have shipped untested. I'd rather ship one transport that works than two that mostly do.
+Why both? Stdio is the right answer for desktop-style clients. Streamable HTTP is what any production-style integration (long-running service, Kubernetes pod, load balancer) is going to want — and it's the transport that replaced SSE in the 2025-03-26 spec. Implementing it now keeps the seam honest.
 
 ## Provider abstraction: OpenAI-compatible only
 
@@ -69,5 +69,4 @@ The MCP server's `instructions` (what the LLM sees about what the server is for)
 - A real catalogue (52 deals from real groupon.es), not synthetic.
 - Provider abstraction.
 - Docker for both ingest and serve.
-- CI on every push.
 - A doctor command that catches every misconfiguration before the user notices.

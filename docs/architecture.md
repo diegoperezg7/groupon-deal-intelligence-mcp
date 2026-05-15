@@ -72,6 +72,21 @@ The embeddings layer takes an `OPENAI_BASE_URL` env var. Set it to:
 
 The same TypeScript code, the same Python `openai` client, no provider-specific branches. We also have a parallel Ollama provider for fully offline use.
 
-## What about Streamable HTTP transport?
+## Streamable HTTP transport
 
-The MCP spec deprecated SSE (Server-Sent Events) in favour of Streamable HTTP in March 2025. Stdio + Streamable HTTP is the future-proof pair. **Stdio is fully wired in this project.** The HTTP variant is one server call short — `server.ts` throws a friendly error if you set `MCP_TRANSPORT=http`. The seam exists; finishing it is a 30-minute job.
+The MCP spec deprecated SSE (Server-Sent Events) in favour of Streamable HTTP in March 2025. Stdio + Streamable HTTP is the future-proof pair. **Both are wired in this project.**
+
+- Default: `MCP_TRANSPORT=stdio` (used by Claude Desktop, the Inspector, most clients).
+- Set `MCP_TRANSPORT=http` and `MCP_HTTP_PORT=3333` (default) to serve the same tool surface over Streamable HTTP at `POST/GET /mcp`. Stateless mode — no sessions, no in-memory message log.
+
+`curl` smoke test (the kind of thing you can drop in a runbook):
+
+```bash
+MCP_TRANSPORT=http node dist/mcp/server.js &
+curl -sS -X POST http://localhost:3333/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize",
+       "params":{"protocolVersion":"2025-03-26","capabilities":{},
+                 "clientInfo":{"name":"curl","version":"0"}}}'
+```

@@ -67,7 +67,7 @@ There are three reasons that decision is worth more than a tool count:
 | **Debugging + CI**      | A CLI is trivial to script, pipe, and assert on. An MCP over stdio is awkward to test in a CI pipeline; the CLI isn't.                                                                                       |
 | **Platform thinking**   | In a Nodegraph-style internal AI platform, the same capability should be reachable from agents (MCP), engineers (CLI), and services (HTTP). The interface depends on the consumer; the intelligence layer should be reusable. |
 
-Both interfaces share **the same `core/` engine**. Adding a future HTTP wrapper is a thin file on top of the same code.
+Both interfaces share **the same `core/` engine**. The MCP server is exposed today over **stdio** *and* over **Streamable HTTP** (the spec's successor to SSE). Adding a future REST API mirror would be a thin file on top of the same `core/`.
 
 ---
 
@@ -409,7 +409,7 @@ See [`docs/trade-offs.md`](docs/trade-offs.md) for the long version. The short l
 
 - **52 deals**, not 500. With more time I'd implement scroll-triggered pagination on listings; for a take-home demo, depth beat breadth.
 - **One-shot ingestion**, not scheduled. The pipeline is a script, not a service. Production would wrap it in a cron + diff-only re-embedding.
-- **Stdio + Streamable HTTP stub** — stdio is fully wired; HTTP is one server call short of working. The seam exists, the wire is unhooked.
+- **Stdio + Streamable HTTP** — both wired and tested. Stdio for Claude Desktop / Inspector; HTTP (`MCP_TRANSPORT=http`, default port 3333) for any production-style consumer. Stateless mode — no sessions, no in-memory message log.
 - **Adaptive selectors disabled** — Scrapling's auto-relocation is intriguing but undocumented. A one-shot pipeline doesn't need it.
 - **English-only system prompts in `instructions`** — the user-visible content stays Spanish (the source of truth), but I write for the LLM in English to keep the agent's reasoning sharper.
 

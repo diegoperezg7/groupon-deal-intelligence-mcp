@@ -16,13 +16,18 @@ detection surface low.
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
 import logging
 import random
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
+
+import httpx
 
 from groupon_ingest.models import (
     Category,
@@ -36,6 +41,76 @@ from groupon_ingest.normalizer import dedupe, normalize_deal
 from groupon_ingest.parsers import extract_deal_urls, parse_deal_page
 
 logger = logging.getLogger(__name__)
+
+SITEMAP_INDEX_URL = "https://www.groupon.es/sitemap.xml"
+SITEMAP_NS = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+
+
+def fetch_sitemap_deal_urls(
+    base_url: str = "https://www.groupon.es",
+    max_urls: int = 200,
+    timeout: float = 30.0,
+) -> list[str]:
+    """Pull deal URLs from Groupon's sitemap index — the cleanest way to get
+    coverage beyond the ~9 SSR slots on a /ofertas/ listing.
+
+    Walks /sitemap.xml → finds child sitemaps → fetches each (handling gzip)
+    → extracts <loc> elements that look like /deals/<slug>.
+    Returns a randomised slice of `max_urls` items.
+    """
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        # 1. Sitemap index
+        try:
+            resp = client.get(SITEMAP_INDEX_URL)
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning("Sitemap index fetch failed: %s", exc)
+            return []
+        root = ET.fromstring(resp.text)
+        child_locs = [
+            elem.text for elem in root.findall(".//sm:sitemap/sm:loc", SITEMAP_NS) if elem.text
+        ]
+        logger.info("Found %d child sitemaps", len(child_locs))
+
+        # 2. Each child sitemap
+        for sm_url in child_locs:
+            try:
+                sm_resp = client.get(sm_url)
+                sm_resp.raise_for_status()
+            except Exception as exc:
+                logger.warning("Child sitemap fetch failed for %s: %s", sm_url, exc)
+                continue
+            content = sm_resp.content
+            # httpx already decompresses Content-Encoding: gzip, but Groupon
+            # ALSO serves files with a literal .gz extension and a raw gzip
+            # body when the Content-Encoding header is absent. Detect by
+            # magic bytes rather than relying on the URL suffix.
+            if content[:2] == b"\x1f\x8b":
+                content = gzip.decompress(content)
+            try:
+                sm_root = ET.fromstring(content)
+            except ET.ParseError as exc:
+                logger.warning("Failed to parse %s: %s", sm_url, exc)
+                continue
+            for loc_elem in sm_root.findall(".//sm:url/sm:loc", SITEMAP_NS):
+                url = (loc_elem.text or "").strip().split("?")[0].rstrip("/")
+                if (
+                    url
+                    and url.startswith(base_url)
+                    and "/deals/" in url
+                    and url not in seen
+                ):
+                    seen.add(url)
+                    urls.append(url)
+
+            if len(urls) >= max_urls * 5:  # gather a generous pool, then sample
+                break
+
+    random.shuffle(urls)
+    return urls[:max_urls]
 
 
 def load_seeds(seeds_path: Path) -> dict[str, Any]:
@@ -64,12 +139,19 @@ def scrape(
     listings: list[Listing],
     base_url: str = "https://www.groupon.es",
     max_deals_per_listing: int = 10,
+    sitemap_target: int = 0,
     headless: bool = True,
     solve_cloudflare: bool = True,
     request_timeout_ms: int = 60_000,
     progress_callback: Callable[[NormalizedDeal], None] | None = None,
 ) -> ScrapingResult:
-    """Run the full pipeline. Returns ScrapingResult."""
+    """Run the full pipeline. Returns ScrapingResult.
+
+    Discovery is the cartesian sum of:
+      - URLs found on each /ofertas/{slug} listing in `listings`
+      - Up to `sitemap_target` URLs sampled from groupon.es's sitemap
+    Setting sitemap_target=0 skips the sitemap pass entirely.
+    """
 
     # Late import — Scrapling's eager browser checks (upstream issue 92).
     from scrapling.fetchers import StealthySession  # noqa: PLC0415
@@ -80,6 +162,15 @@ def scrape(
     notes: list[str] = []
     candidate_urls: set[str] = set()
     deal_url_to_listing: dict[str, Listing] = {}
+
+    # ---- pass 0: sitemap-driven URL pool (no browser needed) ----
+    if sitemap_target > 0:
+        logger.info("Fetching up to %d deal URLs from the sitemap...", sitemap_target)
+        sm_urls = fetch_sitemap_deal_urls(base_url=base_url, max_urls=sitemap_target)
+        for u in sm_urls:
+            candidate_urls.add(u)
+        logger.info("Sitemap pass contributed %d unique deal URLs", len(candidate_urls))
+        notes.append(f"sitemap_urls:{len(sm_urls)}")
 
     with StealthySession(
         solve_cloudflare=solve_cloudflare,

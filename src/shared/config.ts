@@ -1,10 +1,27 @@
 import { config as loadEnv } from "dotenv";
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-// Load .env from the repo root if it exists. We do this before parsing so
-// the schema sees the values.
-loadEnv({ path: resolve(process.cwd(), ".env") });
+// Locate the .env file robustly:
+//   1. Current working directory (the user might be in the repo root)
+//   2. Walk up from the location of this script (handles `npx`, global
+//      installs and PATH-based invocations where cwd is unrelated)
+// We do this BEFORE schema parsing so loaded values populate process.env.
+const __thisFile = fileURLToPath(import.meta.url);
+function findEnvFile(): string | undefined {
+  const candidates = [
+    resolve(process.cwd(), ".env"),
+    resolve(dirname(__thisFile), ".env"),
+    resolve(dirname(__thisFile), "..", ".env"),
+    resolve(dirname(__thisFile), "..", "..", ".env"),
+    resolve(dirname(__thisFile), "..", "..", "..", ".env"),
+  ];
+  return candidates.find((p) => existsSync(p));
+}
+const envPath = findEnvFile();
+if (envPath) loadEnv({ path: envPath });
 
 const ConfigSchema = z
   .object({
