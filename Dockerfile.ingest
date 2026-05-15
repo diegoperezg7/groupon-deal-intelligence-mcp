@@ -1,0 +1,31 @@
+# Scrapling-based ingestion image.
+#
+# We start from the official Scrapling image which already ships
+# Patchright + Camoufox + fingerprint databases. That saves us ~10
+# minutes of cold-start install time and the headaches that come with
+# pinning Playwright + browser versions ourselves.
+#
+# Usage:
+#   docker build -f Dockerfile.ingest -t groupon-ingest .
+#   docker run --rm -v $(pwd)/data:/data -e OPENAI_API_KEY=... \
+#     groupon-ingest scrape --kinds all --slugs all --max 12 \
+#     --output /data/scraped.json
+#   docker run --rm -v $(pwd)/data:/data -e OPENAI_API_KEY=... \
+#     groupon-ingest embed /data/scraped.json --sqlite /data/deals.sqlite
+
+FROM ghcr.io/d4vinci/scrapling:latest AS base
+WORKDIR /app
+
+# Install the ingestion package on top of the Scrapling base
+COPY ingestion/pyproject.toml ./ingestion/
+COPY ingestion/src ./ingestion/src
+RUN pip install --no-cache-dir -e ./ingestion
+
+# Camoufox binary download (the only thing the base image doesn't ship)
+RUN python -m camoufox fetch || true
+
+WORKDIR /app/ingestion
+VOLUME ["/data"]
+
+ENTRYPOINT ["python", "-m", "groupon_ingest"]
+CMD ["--help"]

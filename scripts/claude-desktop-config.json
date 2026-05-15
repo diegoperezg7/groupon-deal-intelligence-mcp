@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "groupon-es-deal-intelligence": {
+      "command": "node",
+      "args": [
+        "/ABSOLUTE/PATH/TO/groupon-deal-intelligence-mcp/dist/mcp/server.js"
+      ],
+      "env": {
+        "SQLITE_PATH": "/ABSOLUTE/PATH/TO/groupon-deal-intelligence-mcp/data/deals.sqlite",
+        "EMBEDDINGS_PROVIDER": "openai",
+        "OPENAI_API_KEY": "sk-...",
+        "OPENAI_BASE_URL": "https://openrouter.ai/api/v1",
+        "OPENAI_EMBEDDING_MODEL": "openai/text-embedding-3-small"
+      }
+    }
+  }
+}

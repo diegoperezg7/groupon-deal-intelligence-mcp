@@ -1,0 +1,42 @@
+# Two-step pipeline:
+#   1. `docker compose run --rm ingest` populates data/deals.sqlite
+#   2. `docker compose run --rm mcp` serves the MCP over stdio
+#
+# Stdio MCP doesn't really fit a long-running service model; the mcp
+# service here is mostly for local testing with Streamable HTTP.
+
+services:
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile.ingest
+    image: groupon-ingest:local
+    env_file: .env
+    volumes:
+      - ./data:/data
+      - ./ingestion/data:/app/ingestion/data:ro
+    command: >
+      ingest
+      --max 12
+      --kinds all
+      --slugs all
+      --json /data/scraped.json
+      --sqlite /data/deals.sqlite
+      --provider openai
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    image: groupon-mcp:local
+    env_file: .env
+    environment:
+      MCP_TRANSPORT: http
+      SQLITE_PATH: /data/deals.sqlite
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      ingest:
+        condition: service_completed_successfully

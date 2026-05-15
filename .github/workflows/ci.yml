@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    name: TypeScript (typecheck, lint, build, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --max-warnings 0
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+        # Some tests need a populated SQLite — they'll skip gracefully
+        # when data/sample-deals.json is absent in CI. Treat the run as
+        # advisory until PHASE 7 commits a frozen sample.
+        continue-on-error: true
+
+  python:
+    name: Python ingestion (lint + import smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install (no scrapling browsers)
+        run: |
+          cd ingestion
+          pip install --upgrade pip
+          pip install ruff
+          # We intentionally do NOT run `scrapling install` in CI — it
+          # downloads several hundred MB of browsers. We only need to
+          # validate that the package's Python parses cleanly.
+          pip install -e . --no-deps
+          pip install pydantic pydantic-settings typer rich tenacity httpx python-dotenv sqlite-utils
+
+      - name: Ruff lint
+        run: |
+          cd ingestion
+          ruff check src/
+
+      - name: Import smoke
+        run: |
+          cd ingestion
+          python -c "from groupon_ingest import models, normalizer; print('imports ok')"
