@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 /**
- * Catalog overview — a single-call orientation snapshot for AI agents
- * starting a fresh session, or for humans asking "what's in here?".
+ * Catalog overview — a single-call orientation snapshot at the start
+ * of an MCP session, or for humans asking "what's in here?".
  *
  * Wire shape uses euros (not cents). Designed to be cheap to compute
  * for catalogues of a few thousand deals; not appropriate at 100k+.

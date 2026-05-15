@@ -4,7 +4,7 @@
 
 # Groupon Deal Intelligence MCP
 
-**An MCP server (and companion CLI) that turns groupon.es into a queryable, semantically-searchable, merchant-analytics-ready data layer for any AI agent.**
+**An MCP server (and companion CLI) that turns groupon.es into a queryable, semantically-searchable, merchant-analytics-ready data layer for any MCP client.**
 
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-43853d?logo=node.js&logoColor=white)](.nvmrc)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
