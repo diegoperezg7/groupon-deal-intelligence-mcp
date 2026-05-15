@@ -47,13 +47,10 @@ search_deals + get_deal_details when answering shopper-oriented
 questions about a specific need.
 `.trim();
 
-export async function startServer(): Promise<void> {
-  const cfg = loadConfig();
-  logger.info({ transport: cfg.MCP_TRANSPORT }, "Starting MCP server");
-
-  const store = new DealStore(cfg.SQLITE_PATH);
-  const embeddings = getEmbeddingsProvider();
-
+function buildServer(deps: {
+  store: DealStore;
+  embeddings: ReturnType<typeof getEmbeddingsProvider>;
+}): McpServer {
   const server = new McpServer(SERVER_INFO, {
     capabilities: {
       tools: {},
@@ -65,39 +62,52 @@ export async function startServer(): Promise<void> {
   });
 
   // Tools
-  registerSearchDeals(server, { store, embeddings });
-  registerGetDealDetails(server, { store });
-  registerFindSimilarDeals(server, { store });
-  registerCompareDeals(server, { store });
-  registerAnalyzeMarket(server, { store });
-  registerCategoryInsights(server, { store });
-  registerListCategories(server, { store });
-  registerListLocations(server, { store });
+  registerSearchDeals(server, { store: deps.store, embeddings: deps.embeddings });
+  registerGetDealDetails(server, { store: deps.store });
+  registerFindSimilarDeals(server, { store: deps.store });
+  registerCompareDeals(server, { store: deps.store });
+  registerAnalyzeMarket(server, { store: deps.store });
+  registerCategoryInsights(server, { store: deps.store });
+  registerListCategories(server, { store: deps.store });
+  registerListLocations(server, { store: deps.store });
 
   // Resources
-  registerDealResource(server, { store });
-  registerCategoryResource(server, { store });
-  registerLocationResource(server, { store });
+  registerDealResource(server, { store: deps.store });
+  registerCategoryResource(server, { store: deps.store });
+  registerLocationResource(server, { store: deps.store });
 
   // Prompts
   registerAnalyzeMyPricing(server);
   registerFindArbitrage(server);
   registerCompareDealsPrompt(server);
 
+  return server;
+}
+
+export async function startServer(): Promise<void> {
+  const cfg = loadConfig();
+  logger.info({ transport: cfg.MCP_TRANSPORT }, "Starting MCP server");
+
+  const store = new DealStore(cfg.SQLITE_PATH);
+  const embeddings = getEmbeddingsProvider();
+
   if (cfg.MCP_TRANSPORT === "stdio") {
+    // Stdio is a single long-lived connection — one server instance is enough.
+    const server = buildServer({ store, embeddings });
     const transport = new StdioServerTransport();
     await server.connect(transport);
     logger.info("MCP server connected over stdio");
     return;
   }
 
-  // Streamable HTTP transport (stateless mode — no sessions).
-  // The 2025-03-26 spec endpoint is a single path that accepts POST
-  // (JSON-RPC requests) and GET (SSE for server-initiated messages).
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-  await server.connect(transport);
+  // Streamable HTTP transport (stateless). The SDK's StreamableHTTPServer-
+  // Transport in stateless mode keeps state from the first request and
+  // refuses follow-up tool/call requests on the same transport instance.
+  // The workaround that works cleanly with every MCP client (the SDK
+  // Client, raw JSON-RPC, the Inspector) is to spin up a fresh McpServer
+  // + transport per HTTP request. The tool/resource/prompt registrations
+  // are pure-function-fast, so this costs negligible per-request CPU
+  // versus the LLM round-trip that follows.
 
   const httpServer = createHttpServer(async (req, res) => {
     const url = req.url ?? "";
@@ -105,12 +115,19 @@ export async function startServer(): Promise<void> {
       res.writeHead(404, { "content-type": "text/plain" }).end("not found");
       return;
     }
+    let perRequestServer: McpServer | undefined;
+    let perRequestTransport: StreamableHTTPServerTransport | undefined;
     try {
       let parsedBody: unknown;
       if (req.method === "POST") {
         parsedBody = await readJsonBody(req);
       }
-      await transport.handleRequest(req, res, parsedBody);
+      perRequestServer = buildServer({ store, embeddings });
+      perRequestTransport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+      await perRequestServer.connect(perRequestTransport);
+      await perRequestTransport.handleRequest(req, res, parsedBody);
     } catch (err) {
       logger.error({ err, url, method: req.method }, "HTTP request failed");
       if (!res.headersSent) {
@@ -121,6 +138,19 @@ export async function startServer(): Promise<void> {
             id: null,
           }),
         );
+      }
+    } finally {
+      // Release the per-request server + transport so the next request
+      // starts clean. close() is idempotent.
+      try {
+        await perRequestTransport?.close();
+      } catch {
+        /* noop */
+      }
+      try {
+        await perRequestServer?.close();
+      } catch {
+        /* noop */
       }
     }
   });

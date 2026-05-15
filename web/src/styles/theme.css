@@ -1,0 +1,62 @@
+/* Groupon-inspired palette. The brand green is the SimpleIcons brand
+ * value (#53A318). Surrounding tokens are designed for AA contrast in
+ * both light and dark.
+ */
+:root {
+  --green-primary: #53A318;
+  --green-deep: #3F7C16;
+  --green-soft: #E8F4DA;
+  --green-soft-strong: #C9E2A6;
+
+  --bg-page: #FAFAF7;
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #FFFFFF;
+  --bg-muted: #F2F1EB;
+
+  --text-strong: #1A1F12;
+  --text-default: #2B3025;
+  --text-muted: #6E7466;
+  --text-on-green: #FFFFFF;
+
+  --border: #E4E2D6;
+  --border-strong: #C8C5B2;
+
+  --shadow-sm: 0 1px 2px rgba(20, 25, 12, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 25, 12, 0.08);
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --font-stack: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --error: #B23E1A;
+  --error-bg: #FBE9DF;
+  --warn: #B27C00;
+}
+
+html.dark-mode {
+  --green-primary: #6FBF22;
+  --green-deep: #53A318;
+  --green-soft: #1E2A12;
+  --green-soft-strong: #2E4218;
+
+  --bg-page: #0F1410;
+  --bg-surface: #161C16;
+  --bg-surface-elevated: #1C231C;
+  --bg-muted: #1C231C;
+
+  --text-strong: #ECEFE6;
+  --text-default: #CFD2C5;
+  --text-muted: #8E9286;
+  --text-on-green: #0A0F08;
+
+  --border: #2A3128;
+  --border-strong: #3D4538;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
+
+  --error: #F0856A;
+  --error-bg: #36180E;
+}

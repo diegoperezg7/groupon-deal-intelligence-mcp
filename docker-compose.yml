@@ -1,9 +1,10 @@
-# Two-step pipeline:
+# Three-step pipeline:
 #   1. `docker compose run --rm ingest` populates data/deals.sqlite
-#   2. `docker compose run --rm mcp` serves the MCP over stdio
+#   2. `docker compose up mcp`           serves the MCP over Streamable HTTP
+#   3. `docker compose up web`           runs the chat demo on http://localhost:3000
 #
-# Stdio MCP doesn't really fit a long-running service model; the mcp
-# service here is mostly for local testing with Streamable HTTP.
+# The MCP server stays the primary deliverable; the web service is a
+# demo client that consumes it over HTTP.
 
 services:
   ingest:
@@ -40,3 +41,19 @@ services:
     depends_on:
       ingest:
         condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: groupon-web:local
+    env_file: .env
+    environment:
+      MCP_URL: http://mcp:3333/mcp
+      WEB_PORT: 3000
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      mcp:
+        condition: service_started

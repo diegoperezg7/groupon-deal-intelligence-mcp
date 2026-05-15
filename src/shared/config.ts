@@ -31,13 +31,17 @@ const ConfigSchema = z
     OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
     OLLAMA_HOST: z.string().url().default("http://localhost:11434"),
     OLLAMA_EMBEDDING_MODEL: z.string().default("nomic-embed-text"),
-    LLM_PROVIDER: z.enum(["openai", "openrouter", "ollama", "none"]).default("none"),
-    LLM_MODEL: z.string().default("openai/gpt-4o-mini"),
-    LLM_BASE_URL: z.string().url().optional(),
+    LLM_PROVIDER: z.enum(["openai", "openrouter", "xai", "ollama", "none"]).default("none"),
+    LLM_API_KEY: z.string().optional(),
+    LLM_MODEL: z.string().default("grok-4-1-fast-non-reasoning"),
+    LLM_BASE_URL: z.string().url().default("https://api.x.ai/v1"),
     SQLITE_PATH: z.string().default("./data/deals.sqlite"),
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
     MCP_TRANSPORT: z.enum(["stdio", "http"]).default("stdio"),
     MCP_HTTP_PORT: z.coerce.number().int().positive().default(3333),
+    // --- Web subproject (BFF + frontend) ---
+    WEB_PORT: z.coerce.number().int().positive().default(3000),
+    MCP_URL: z.string().url().default("http://localhost:3333/mcp"),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.EMBEDDINGS_PROVIDER === "openai" && !cfg.OPENAI_API_KEY) {
@@ -47,6 +51,10 @@ const ConfigSchema = z
         path: ["OPENAI_API_KEY"],
       });
     }
+    // NOTE: LLM_API_KEY is NOT required at the root-config level. The MCP
+    // server and CLI don't invoke an LLM — only the web BFF does, and it
+    // re-validates with its own (stricter) schema in web/server/config.ts.
+    // We let the root config load fine when the LLM key is blank.
   });
 
 export type Config = z.infer<typeof ConfigSchema>;

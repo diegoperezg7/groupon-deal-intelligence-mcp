@@ -67,19 +67,19 @@ You point an MCP-compatible client at this server (Claude Desktop, Claude Code, 
 
 ---
 
-## Why MCP **and** CLI?
+## Three interfaces over the same core
 
-> _The main deliverable is the MCP server, since the challenge asks for an interface any MCP client can connect to. I also expose the same intelligence layer through a thin CLI._
+> _The deliverable is the MCP server. The CLI and the web chat are two more consumers of the same `core/` engine — proof that **the interface depends on the consumer**, not the other way around._
 
-There are three reasons that decision is worth more than a tool count:
+| Interface | Where it lives | Who consumes it | Why it's here |
+|---|---|---|---|
+| **MCP server** *(primary deliverable)* | [`src/mcp/`](src/mcp) — stdio + Streamable HTTP | Claude Desktop, Cursor, the MCP Inspector, any MCP client | What the brief asked for. 8 tools, 3 resources, 3 prompts. |
+| **CLI companion** | [`src/cli/`](src/cli) — `groupon-intel` | Engineers, CI pipelines, terminals | Token-cost-free way to drive the same intelligence. Easy to script and assert on. |
+| **Web chat demo** | [`web/`](web) — Vite + React + Express BFF + xAI Grok | Humans, demo audiences | Closes the loop: an LLM in a browser invoking the MCP server's tools in real time. |
 
-| Reason                  | What it means in practice                                                                                                                                                                                  |
-|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Token cost asymmetry**| MCP servers load their tool schema into every conversation — typically 5–15K tokens *before* the user's first message. For high-frequency or batch use, a CLI is dramatically cheaper.                  |
-| **Debugging + CI**      | A CLI is trivial to script, pipe, and assert on. An MCP over stdio is awkward to test in a CI pipeline; the CLI isn't.                                                                                       |
-| **Platform thinking**   | In a Nodegraph-style internal AI platform, the same capability should be reachable from agents (MCP), engineers (CLI), and services (HTTP). The interface depends on the consumer; the intelligence layer should be reusable. |
+All three share **the same `core/` engine**. The MCP server is exposed today over **stdio** *and* over **Streamable HTTP** (the spec's successor to SSE). The web demo's BFF talks to that HTTP transport — it does **not** import `core/` directly, so the round-trip is the proof that the third interface is real and not just a renamed CLI.
 
-Both interfaces share **the same `core/` engine**. The MCP server is exposed today over **stdio** *and* over **Streamable HTTP** (the spec's successor to SSE). Adding a future REST API mirror would be a thin file on top of the same `core/`.
+Why this matters for a Nodegraph-style platform: the same capability has to be reachable from agents, engineers, services and end-users without rewriting the intelligence each time. This repo is the smallest faithful illustration of that pattern.
 
 ---
 

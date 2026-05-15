@@ -3,7 +3,15 @@ import tsparser from "@typescript-eslint/parser";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "ingestion/**", "coverage/**"],
+    // The web/ subproject has its own eslint config and runs on a separate
+    // invocation. Don't double-lint it from the root.
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "ingestion/**",
+      "coverage/**",
+      "web/**",
+    ],
   },
   {
     files: ["src/**/*.ts", "tests/**/*.ts"],
