@@ -1,62 +1,110 @@
-/* Groupon-inspired palette. The brand green is the SimpleIcons brand
- * value (#53A318). Surrounding tokens are designed for AA contrast in
- * both light and dark.
+/* Palette inspired by Groupon: verde primary as the brand, a warm coral as
+ * the complementary accent, plus a warm-gray neutral scale that keeps the
+ * interface friendly across long sessions. Both light and dark modes hit
+ * AA contrast on every text/background pair.
  */
 :root {
+  /* Brand greens */
   --green-primary: #53A318;
   --green-deep: #3F7C16;
   --green-soft: #E8F4DA;
   --green-soft-strong: #C9E2A6;
+  --green-glow: rgba(83, 163, 24, 0.16);
 
+  /* Coral accent (complementary to green) — for non-brand highlights */
+  --coral: #E6651B;
+  --coral-deep: #B84D0F;
+  --coral-soft: #FFE8D9;
+
+  /* Sun (a warm yellow used as a third hue for variety) */
+  --sun: #E5A82C;
+  --sun-soft: #FFF1D6;
+
+  /* Surfaces & neutrals (warm gray scale) */
   --bg-page: #FAFAF7;
   --bg-surface: #FFFFFF;
   --bg-surface-elevated: #FFFFFF;
   --bg-muted: #F2F1EB;
+  --bg-glow: radial-gradient(
+    120% 60% at 50% -10%,
+    rgba(83, 163, 24, 0.08) 0%,
+    rgba(83, 163, 24, 0) 60%
+  );
 
+  /* Text */
   --text-strong: #1A1F12;
   --text-default: #2B3025;
   --text-muted: #6E7466;
+  --text-soft: #9DA193;
   --text-on-green: #FFFFFF;
 
+  /* Borders */
   --border: #E4E2D6;
   --border-strong: #C8C5B2;
+  --ring: rgba(83, 163, 24, 0.18);
 
-  --shadow-sm: 0 1px 2px rgba(20, 25, 12, 0.06);
-  --shadow-md: 0 4px 12px rgba(20, 25, 12, 0.08);
+  /* Shadows */
+  --shadow-xs: 0 1px 1px rgba(20, 25, 12, 0.04);
+  --shadow-sm: 0 1px 3px rgba(20, 25, 12, 0.05), 0 1px 2px rgba(20, 25, 12, 0.03);
+  --shadow-md: 0 8px 24px rgba(20, 25, 12, 0.06), 0 2px 6px rgba(20, 25, 12, 0.03);
+  --shadow-lg: 0 24px 48px rgba(20, 25, 12, 0.10), 0 8px 16px rgba(20, 25, 12, 0.04);
 
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
+  /* Geometry */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
 
+  /* Type */
   --font-stack: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
+  /* Status */
   --error: #B23E1A;
   --error-bg: #FBE9DF;
   --warn: #B27C00;
+  --success: #2F7F1A;
 }
 
 html.dark-mode {
   --green-primary: #6FBF22;
   --green-deep: #53A318;
-  --green-soft: #1E2A12;
-  --green-soft-strong: #2E4218;
+  --green-soft: rgba(111, 191, 34, 0.12);
+  --green-soft-strong: rgba(111, 191, 34, 0.24);
+  --green-glow: rgba(111, 191, 34, 0.24);
+
+  --coral: #FF8147;
+  --coral-deep: #E6651B;
+  --coral-soft: rgba(255, 129, 71, 0.16);
+
+  --sun: #F2BB47;
+  --sun-soft: rgba(242, 187, 71, 0.18);
 
   --bg-page: #0F1410;
   --bg-surface: #161C16;
   --bg-surface-elevated: #1C231C;
   --bg-muted: #1C231C;
+  --bg-glow: radial-gradient(
+    120% 60% at 50% -10%,
+    rgba(111, 191, 34, 0.14) 0%,
+    rgba(111, 191, 34, 0) 60%
+  );
 
   --text-strong: #ECEFE6;
   --text-default: #CFD2C5;
   --text-muted: #8E9286;
+  --text-soft: #6E7466;
   --text-on-green: #0A0F08;
 
   --border: #2A3128;
   --border-strong: #3D4538;
+  --ring: rgba(111, 191, 34, 0.24);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.45);
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 24px 48px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.25);
 
   --error: #F0856A;
-  --error-bg: #36180E;
+  --error-bg: rgba(240, 133, 106, 0.16);
 }

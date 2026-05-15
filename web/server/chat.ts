@@ -45,9 +45,14 @@ export function registerChatRoute(app: Express): void {
       res.write(`data: ${JSON.stringify(evt.data)}\n\n`);
     };
 
+    // Track real client disconnects (vs Express 5 internal 'close'
+    // emitted when the request body is consumed). We mark disconnect
+    // only if the response was NOT already ended by us.
     let clientDisconnected = false;
-    req.on("close", () => {
-      clientDisconnected = true;
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        clientDisconnected = true;
+      }
     });
 
     try {

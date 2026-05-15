@@ -29,28 +29,30 @@ export function Composer() {
         void submit();
       }}
     >
-      <textarea
-        className="composer-textarea"
-        placeholder={
-          isStreaming
-            ? "Thinking…"
-            : "Ask about deals, ofertas, descuentos, merchants… (Enter to send)"
-        }
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={1}
-        disabled={isStreaming}
-        autoFocus
-      />
-      <button
-        type="submit"
-        className="composer-send"
-        disabled={!text.trim() || isStreaming}
-        aria-label="Send"
-      >
-        <SendHorizontal size={18} aria-hidden="true" />
-      </button>
+      <div className="composer-inner">
+        <textarea
+          className="composer-textarea"
+          placeholder={
+            isStreaming
+              ? "Thinking…"
+              : "Ask about deals, ofertas, descuentos, merchants… (Enter to send)"
+          }
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKeyDown}
+          rows={1}
+          disabled={isStreaming}
+          autoFocus
+        />
+        <button
+          type="submit"
+          className="composer-send"
+          disabled={!text.trim() || isStreaming}
+          aria-label="Send"
+        >
+          <SendHorizontal size={18} aria-hidden="true" />
+        </button>
+      </div>
     </form>
   );
 }

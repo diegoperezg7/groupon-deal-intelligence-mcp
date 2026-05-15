@@ -93,9 +93,9 @@ flowchart LR
 
     subgraph Ingestion["Python ingestion (Scrapling)"]
         direction TB
-        Scrape["Scrape\nStealthySession +<br/>solve_cloudflare"] --> Parse["Parse\nJSON-LD primary +<br/>data-testid fallback"]
-        Parse --> Norm["Normalize\npydantic + dedupe"]
-        Norm --> Embed["Embed\nOpenAI-compatible API"]
+        Scrape["Scrape<br/>StealthySession +<br/>solve_cloudflare"] --> Parse["Parse<br/>JSON-LD primary +<br/>data-testid fallback"]
+        Parse --> Norm["Normalize<br/>pydantic + dedupe"]
+        Norm --> Embed["Embed<br/>OpenAI-compatible API"]
     end
 
     G -->|HTTPS| Scrape
@@ -104,7 +104,7 @@ flowchart LR
     subgraph Runtime["TypeScript runtime"]
         direction TB
         Core["core/<br/>interface-agnostic intelligence"]
-        MCP["mcp/<br/>8 tools + 3 resources + 3 prompts"]
+        MCP["mcp/<br/>8 tools + 3 resources + 3 prompts<br/>stdio + Streamable HTTP"]
         CLI["cli/<br/>10 commands · 3 formats"]
         Core --> MCP
         Core --> CLI
@@ -112,13 +112,22 @@ flowchart LR
 
     Store --> Core
 
-    subgraph Clients["Clients"]
+    subgraph WebDemo["web/ (demo client)"]
+        direction TB
+        BFF["Express BFF<br/>tool loop + SSE"]
+        UI["Vite + React<br/>chat UI"]
+        UI <-->|"POST /chat (SSE)"| BFF
+        BFF -->|"OpenAI-compat"| xAI{{"xAI Grok"}}
+    end
+
+    subgraph Clients["Other MCP clients"]
         Claude["Claude Desktop"]
         Cursor["Cursor"]
         Inspector["MCP Inspector"]
         Engineer["Engineer / CI"]
     end
 
+    BFF -.HTTP JSON-RPC.- MCP
     MCP -.stdio | HTTP.- Claude
     MCP -.stdio.- Cursor
     MCP -.HTTP.- Inspector
@@ -127,9 +136,11 @@ flowchart LR
     classDef ext fill:#f5f3ff,stroke:#9F00FF,color:#1f1f1f
     classDef core fill:#dcfce7,stroke:#16a34a,color:#1f1f1f
     classDef store fill:#fef3c7,stroke:#d97706,color:#1f1f1f
-    class G,Claude,Cursor,Inspector,Engineer ext
+    classDef demo fill:#ffe8d9,stroke:#e6651b,color:#1f1f1f
+    class G,Claude,Cursor,Inspector,Engineer,xAI ext
     class Core,MCP,CLI core
     class Store store
+    class BFF,UI demo
 ```
 
 **The golden rule**: `core/` imports nothing from `mcp/` or `cli/` — only the reverse. That separation is what lets us add a third interface (HTTP, gRPC, anything) without disturbing the intelligence.
@@ -325,6 +336,59 @@ $ groupon-intel search "masaje relajante para parejas" --limit 3
 │ dm-by-bodywood-7                 │ Masaje a elegir entre relajante, descontracturant… │ malaga   │ belleza │ — │ — │ — │ 0.534 │
 └──────────────────────────────────┴────────────────────────────────────────────────────┴──────────┴─────────┴───┴───┴───┴───────┘
 ```
+
+---
+
+## Web chat demo (`web/`)
+
+The third interface — a browser chat that proves the MCP server is reachable from a real LLM-driven client, not just from another piece of TypeScript we wrote.
+
+- Vite + React 19 frontend with a Groupon-inspired palette (verde primary, coral secondary, sun tertiary), dark/light toggle, animated thinking indicator with stage-aware label ("Thinking" → "Running tools" → "Composing answer").
+- Express BFF that holds **one xAI Grok client** (OpenAI-compat, model `grok-4-1-fast-non-reasoning`) and talks to the MCP server via raw JSON-RPC over Streamable HTTP. It does **not** import `core/` — the round-trip is the proof.
+- Streaming: server-sent events from BFF → frontend. Text chunks stream token-by-token; tool calls emit a dedicated event with the tool name + args + status.
+
+### Conversation flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant UI as web/src (React)
+    participant BFF as web/server (Express)
+    participant LLM as xAI Grok
+    participant MCP as MCP server
+
+    User->>UI: "I run a spa in Madrid charging 60€..."
+    UI->>BFF: POST /chat (SSE)
+    BFF->>MCP: tools/list (JSON-RPC)
+    MCP-->>BFF: 8 tools + schemas
+    BFF->>LLM: chat.completions(messages, tools)
+    LLM-->>BFF: tool_call analyze_market{cat,loc}
+    BFF-->>UI: event: tool_call
+    Note over UI: ToolBadge "calling analyze_market…"
+    BFF->>MCP: tools/call analyze_market
+    MCP-->>BFF: structuredContent{prices, top performers}
+    BFF-->>UI: event: tool_result (ok, snippet)
+    BFF->>LLM: continue with tool result
+    LLM-->>BFF: streamed answer tokens
+    BFF-->>UI: event: text (×N)
+    Note over UI: dots stop, answer streams in
+    BFF-->>UI: event: done
+```
+
+### Run locally
+
+```bash
+# Terminal 1 — MCP server (Streamable HTTP)
+npm run build
+MCP_TRANSPORT=http node dist/mcp/server.js
+
+# Terminal 2 — BFF + frontend (concurrently)
+cd web && npm install && npm run dev
+# Opens http://localhost:5173 with proxy to BFF on :3000
+```
+
+See [`web/README.md`](web/README.md) for the full subproject docs.
 
 ---
 

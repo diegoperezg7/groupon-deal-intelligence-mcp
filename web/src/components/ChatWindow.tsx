@@ -15,7 +15,13 @@ export function ChatWindow() {
   if (messages.length === 0) {
     return (
       <div className="chat-empty">
-        <h2>Ask anything about deals on groupon.es</h2>
+        <div className="chat-empty-hero">
+          <img src="/groupon-logo.svg" alt="" className="chat-empty-logo" />
+          <div className="chat-empty-copy">
+            <span className="chat-empty-eyebrow">MCP server in the loop</span>
+            <h2>Ask anything about deals on groupon.es</h2>
+          </div>
+        </div>
         <p className="chat-empty-sub">
           This chat talks to the MCP server in the same repo. The model picks
           the right tool, the tool returns structured data, the model wraps it

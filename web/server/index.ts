@@ -1,5 +1,4 @@
 import express from "express";
-import compression from "compression";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +20,7 @@ async function main(): Promise<void> {
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));
-  app.use(compression());
+  // No compression() here — it buffers responses and breaks SSE streaming.
 
   app.get("/healthz", async (_req, res) => {
     res.json({
