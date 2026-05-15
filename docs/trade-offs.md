@@ -2,16 +2,16 @@
 
 What was sacrificed to ship in time, and what I'd do with more.
 
-## Volume: 52 deals, not 500
+## Volume: 77 deals, not 5 000
 
-Groupon's `/ofertas/{slug}` listings render ~9 deals server-side and lazy-load the rest via JS scroll. To go past ~9 per listing I'd need either:
+The discovery pipeline combines two sources:
 
-- Scroll-triggered fetching inside `StealthySession` (more browser interactions, more anti-bot signal).
-- The sitemap (`/sitemap.xml`) or an authenticated API.
+1. **14 `/ofertas/{slug}` listings** (Madrid, Barcelona, Valencia, Sevilla, Bilbao, Malaga, Zaragoza × belleza, gastronomia, cosas-que-hacer, escapadas, bienestar, cursos, regalos, electronica). Each renders ~9 deals SSR, the rest lazy-loaded via JS.
+2. **Sitemap-driven sampling** (`--sitemap N`) — walks `/sitemap.xml`, follows the gzip child sitemaps, and pools deal URLs that the listings never surface. This is how we get past the SSR cap.
 
-Neither was worth more than ~30 minutes of polish for the take-home. At 14 listings × ~9 each + global dedup we landed at 52 unique deals across 7 cities and 8 categories — enough to give every tool real signal (the semantic search returns meaningful matches; the market analysis has price/discount/rating distributions to work with).
+Final dataset: **77 unique deals across 11 Spanish cities and 8 categories**, 75 distinct merchants. 100% have a price, 53% have an explicit discount tag, 71% have a customer rating, 100% have a description and a merchant. Enough signal that every tool returns interesting answers — `analyze_market` reports a real price distribution, `compare_deals` ranks with non-zero scores.
 
-**What I'd do with more time**: write a `--paginate` option that scrolls each listing until N deals are gathered, with the same jitter discipline.
+**What I'd do with more time**: scroll-triggered pagination on each listing for deeper city-and-category sampling, then a scheduled diff-only re-ingest so the catalogue doesn't age.
 
 ## Ingestion: one-shot, not scheduled
 
@@ -40,13 +40,13 @@ The 1536-dim slot is chosen so OpenAI `text-embedding-3-small` fits natively. Sm
 
 If we committed to one provider in production I'd drop to the native dimension.
 
-## Tests: 22 assertions, not 80
+## Tests: 31 assertions, not 80
 
 Coverage is highest where mistakes are most expensive:
 
 - **Scoring** (12 assertions) — the only place arithmetic decisions live. Every component plus end-to-end ranking sanity.
 - **Market analytics** (5 assertions) — price stats, discount bucketing, copy-pattern extraction.
-- **MCP integration** (5 assertions) — list_tools, list_categories, list_locations, get_deal_details, compare_deals, all through the official `InMemoryTransport`.
+- **MCP integration** (14 assertions) — all 8 tools, 3 resource templates, 3 prompts and the readOnlyHint annotation contract, all through the official `InMemoryTransport`.
 
 What's missing: parser tests on real HTML fixtures (would require committing scraped pages, which I didn't want to do for IP reasons); CLI tests via `execa` (the CLI is glue, the hard work is in `core/` and that has tests); load tests on the semantic search (it's KNN over 52 rows; load isn't the concern at this stage).
 
