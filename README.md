@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://img.grouponcdn.com/sparta/3C1K1U4AqG9FugxH7wh9VcaYBpgw/3C-156x66.png" alt="Groupon" width="180" />
+<img src="docs/assets/groupon-logo.svg" alt="Groupon" width="120" />
 
 # Groupon Deal Intelligence MCP
 
