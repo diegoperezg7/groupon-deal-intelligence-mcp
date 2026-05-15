@@ -1,0 +1,83 @@
+{
+  "name": "groupon-deal-intelligence-mcp",
+  "version": "0.1.0",
+  "description": "MCP server + CLI exposing deal intelligence for groupon.es — semantic search, market analysis, and merchant-side insights over a shared intelligence core.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "groupon-intel": "./dist/cli/index.js",
+    "groupon-mcp": "./dist/mcp/server.js"
+  },
+  "main": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
+  "files": [
+    "dist",
+    "data/sample-deals.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev:mcp": "tsx src/mcp/server.ts",
+    "dev:cli": "tsx src/cli/index.ts",
+    "start:mcp": "node dist/mcp/server.js",
+    "start:cli": "node dist/cli/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,json,md}\"",
+    "inspect": "npx -y @modelcontextprotocol/inspector node dist/mcp/server.js",
+    "doctor": "node dist/cli/index.js doctor",
+    "prepare": "test -d .git && git config core.hooksPath .githooks || true"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "groupon",
+    "ai-agent",
+    "semantic-search",
+    "rag",
+    "cli",
+    "deal-intelligence"
+  ],
+  "author": "Diego Perez Garcia <diego@diegoperez.dev>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/diegoperezg7/groupon-deal-intelligence-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/diegoperezg7/groupon-deal-intelligence-mcp/issues"
+  },
+  "homepage": "https://github.com/diegoperezg7/groupon-deal-intelligence-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^11.5.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "openai": "^4.73.0",
+    "pino": "^9.5.0",
+    "sqlite-vec": "^0.1.6",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^9.16.0",
+    "execa": "^9.5.2",
+    "pino-pretty": "^13.0.0",
+    "prettier": "^3.4.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

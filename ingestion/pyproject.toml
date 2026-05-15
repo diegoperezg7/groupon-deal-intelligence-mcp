@@ -1,0 +1,51 @@
+[project]
+name = "groupon-ingest"
+version = "0.1.0"
+description = "Scrapling-based ingestion pipeline for groupon.es deal intelligence MCP"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Diego Perez Garcia", email = "diego@diegoperez.dev" }]
+
+dependencies = [
+    "scrapling[fetchers]>=0.4.8",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "sqlite-utils>=3.37",
+    "openai>=1.55.0",
+    "httpx>=0.27.0",
+    "typer>=0.13.0",
+    "rich>=13.9.0",
+    "tenacity>=9.0.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.3.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+groupon-ingest = "groupon_ingest.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/groupon_ingest"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
