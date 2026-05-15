@@ -202,12 +202,17 @@ cp .env.example .env
 Two options:
 
 ```bash
-# Option A: use the committed sample (52 real deals scraped on 2026-05-15)
+# Option A — fastest: use the committed sample
+# (77 real deals scraped on 2026-05-15 from groupon.es)
 python -m groupon_ingest embed data/sample-deals.json --sqlite data/deals.sqlite
 
-# Option B: run a fresh scrape (~10 min for ~50 deals, longer for more)
-groupon-intel ingest --max 12
+# Option B — fresh scrape (~25 min for ~80 deals; needs Camoufox installed)
+groupon-intel ingest --max 12 --sitemap 120
 ```
+
+See [`ingestion/README.md`](ingestion/README.md) for the full pipeline:
+listing + sitemap discovery, the JSON-LD-first parser cascade, the
+`scrape` / `embed` / `ingest` / `doctor` commands and their flags.
 
 ### 4. Verify the install
 
@@ -222,11 +227,11 @@ groupon-intel doctor
   ✓ config loaded (provider=openai)
   ✓ SQLite at /.../data/deals.sqlite
   ✓ schema version 1
-  ✓ 52 deals in catalogue
+  ✓ 77 deals in catalogue
   ✓ 8 categories
-  ✓ 7 locations
+  ✓ 11 locations
   ✓ embeddings provider responded (dim=1536)
-  ✓ semantic search works — top hit: 'Masaje relajante…' (sim=0.553)
+  ✓ semantic search works — top hit: '1 o 3 sesiones de masaje…' (sim=0.562)
 
 All green. The MCP server is ready to serve.
 ```
@@ -395,6 +400,31 @@ cd web && npm install && npm run dev
 ```
 
 See [`web/README.md`](web/README.md) for the full subproject docs.
+
+---
+
+## Where the data comes from
+
+The catalogue is built by a one-shot Python pipeline (`ingestion/`) using
+[Scrapling](https://github.com/D4Vinci/Scrapling) — a stealth-fetcher
+that bundles Patchright + Camoufox + TLS fingerprint spoofing and solves
+Cloudflare Turnstile natively.
+
+| Step | What happens | Where |
+|---|---|---|
+| **Discover** | Two sources: 14 listings at `groupon.es/ofertas/{slug}` (7 cities × city + category pages) plus sitemap-driven sampling (`/sitemap.xml` + gzip child sitemaps) for up to N additional deals. Union, deduplicated by URL. | `scraper.py` |
+| **Fetch** | One Scrapling `StealthySession` per deal page, concurrency capped at 1 to keep detection surface low. | `scraper.py` |
+| **Parse** | Cascade: Schema.org **JSON-LD** first (`ProductGroup`, `BreadcrumbList`, `AggregateRating`) → `data-testid` → OpenGraph → DOM heuristics. JSON-LD is the contract Groupon must keep for Google. | `parsers/deal_page.py` |
+| **Normalise** | pydantic — currency to cents, percent to int, rating to float, merchant id slugified, dedupe by canonical URL. | `normalizer.py` |
+| **Embed** | `title + description` → 1536-dim vector via OpenAI `text-embedding-3-small` (or Ollama `nomic-embed-text`, right-padded). | `embedder.py` |
+| **Write** | SQLite with [sqlite-vec](https://github.com/asg017/sqlite-vec) for KNN, plus pre-aggregated `categories` / `locations` / `merchants` tables. | `embedder.py` → `data/deals.sqlite` |
+
+Shipped dataset (`data/sample-deals.json`, committed): **77 deals across
+11 Spanish cities and 8 categories, 75 unique merchants**. 100% have a
+price, 53% have an explicit discount, 71% have a customer rating.
+
+Full pipeline docs, flags and reproduction steps:
+[`ingestion/README.md`](ingestion/README.md).
 
 ---
 

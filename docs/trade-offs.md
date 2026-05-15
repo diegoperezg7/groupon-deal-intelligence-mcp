@@ -66,7 +66,7 @@ The MCP server's `instructions` (what the LLM sees about what the server is for)
 
 - All 10 tools fully implemented with Zod input AND output schemas.
 - Both interfaces (MCP + CLI) sharing one core.
-- A real catalogue (52 deals from real groupon.es), not synthetic.
+- A real catalogue (77 deals from real groupon.es), not synthetic.
 - Provider abstraction.
 - Docker for both ingest and serve.
 - A doctor command that catches every misconfiguration before the user notices.
