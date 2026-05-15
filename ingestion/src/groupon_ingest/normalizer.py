@@ -154,14 +154,13 @@ def normalize_deal(scraped: ScrapedDeal) -> NormalizedDeal | None:
         logger.warning("Dropping deal without title: %s", scraped.url)
         return None
 
-    if not scraped.category_slug or not scraped.location_slug:
-        logger.warning(
-            "Dropping deal without category/location: %s (cat=%s loc=%s)",
-            scraped.url,
-            scraped.category_slug,
-            scraped.location_slug,
-        )
-        return None
+    # Be permissive: many sitemap deals (Goods, services) are nationwide
+    # rather than city-bound. Rather than drop them, bucket them into
+    # synthetic 'nacional' / 'otros' slots so the rest of the pipeline still
+    # has them. analyze_market and city-filtered search ignore these
+    # naturally because the slugs don't match a real city.
+    category_slug = scraped.category_slug or "otros"
+    location_slug = scraped.location_slug or "nacional"
 
     slug = _derive_slug_from_url(str(scraped.url))
     merchant_id = _slugify(scraped.merchant_name) if scraped.merchant_name else None
@@ -189,8 +188,8 @@ def normalize_deal(scraped: ScrapedDeal) -> NormalizedDeal | None:
         description=scraped.description.strip() if scraped.description else None,
         merchant_id=merchant_id,
         merchant_name=scraped.merchant_name.strip() if scraped.merchant_name else None,
-        category_slug=scraped.category_slug,
-        location_slug=scraped.location_slug,
+        category_slug=category_slug,
+        location_slug=location_slug,
         price_cents=price_cents,
         original_price_cents=original_price_cents,
         discount_pct=discount_pct,
