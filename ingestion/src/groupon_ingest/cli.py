@@ -2,24 +2,26 @@
 
 from __future__ import annotations
 
-import json
 import logging
+import os
 import sys
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
-from groupon_ingest.scraper import build_jobs, load_seeds, scrape_jobs
+from groupon_ingest.scraper import build_listings, load_seeds, scrape
+
+load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 
 app = typer.Typer(
     name="groupon-ingest",
-    help="Scrape, normalize and prepare groupon.es deals for the MCP server.",
+    help="Scrape, normalize and embed groupon.es deals for the MCP server.",
     no_args_is_help=True,
 )
-
 console = Console()
 
 
@@ -32,62 +34,59 @@ def _setup_logging(level: str = "INFO") -> None:
     )
 
 
+def _default_seeds_path() -> Path:
+    return Path(__file__).resolve().parent.parent.parent / "data" / "seeds.json"
+
+
 @app.command()
-def scrape(
+def scrape_cmd(
     output: Path = typer.Option(
-        Path("data/scraped.json"), "--output", "-o", help="Output JSON path"
+        Path("../data/scraped.json"), "--output", "-o", help="Output JSON path"
     ),
-    seeds: Path = typer.Option(
-        Path(__file__).parent.parent.parent / "data" / "seeds.json",
-        "--seeds",
-        help="Seeds JSON path",
+    seeds: Path = typer.Option(_default_seeds_path, "--seeds"),
+    kinds: str = typer.Option(
+        "all",
+        "--kinds",
+        help="Comma-separated: city,category,all (default: all)",
     ),
-    cities: str = typer.Option(
-        "madrid",
-        "--cities",
-        help="Comma-separated city slugs (default: madrid). Use 'all' for everything in seeds.",
+    slugs: str = typer.Option(
+        "all",
+        "--slugs",
+        help="Comma-separated listing slugs (default: all in seeds)",
     ),
-    categories: str = typer.Option(
-        "belleza-y-relax",
-        "--categories",
-        help="Comma-separated category slugs. Use 'all' for everything in seeds.",
-    ),
-    max_per_combo: int = typer.Option(
-        10, "--max", "-m", help="Max deals per (city, category) combo"
+    max_per_listing: int = typer.Option(
+        10, "--max", "-m", help="Max deal URLs to take from each listing"
     ),
     no_headless: bool = typer.Option(
         False, "--no-headless", help="Run with a visible browser (debugging)"
     ),
     log_level: str = typer.Option("INFO", "--log-level"),
 ) -> None:
-    """Scrape deals from groupon.es using Scrapling."""
+    """Scrape deals from groupon.es using Scrapling.
+
+    Walks each /ofertas/{slug} listing in seeds, deduplicates deal URLs,
+    visits each unique deal page once and writes a normalized JSON.
+    """
     _setup_logging(log_level)
 
     seeds_data = load_seeds(seeds)
-    cities_list = None if cities == "all" else [c.strip() for c in cities.split(",")]
-    categories_list = (
-        None if categories == "all" else [c.strip() for c in categories.split(",")]
-    )
+    kinds_list = None if kinds == "all" else [k.strip() for k in kinds.split(",")]
+    slugs_list = None if slugs == "all" else [s.strip() for s in slugs.split(",")]
 
-    jobs = build_jobs(
-        seeds_data,
-        cities=cities_list,
-        categories=categories_list,
-        max_per_combo=max_per_combo,
-    )
-
-    if not jobs:
-        console.print("[red]No scrape jobs to run (check --cities/--categories).[/red]")
+    listings = build_listings(seeds_data, filter_kinds=kinds_list, filter_slugs=slugs_list)
+    if not listings:
+        console.print("[red]No listings matched the filters.[/red]")
         raise typer.Exit(code=1)
 
     console.print(
-        f"[bold cyan]Planned {len(jobs)} scrape jobs[/bold cyan] "
-        f"({max_per_combo} deals/combo max)"
+        f"[bold cyan]Planning {len(listings)} listing fetches "
+        f"({max_per_listing} deals/listing max)[/bold cyan]"
     )
 
-    result = scrape_jobs(
-        jobs,
-        seeds_data,
+    result = scrape(
+        listings,
+        base_url=seeds_data["base_url"],
+        max_deals_per_listing=max_per_listing,
         headless=not no_headless,
     )
 
@@ -97,13 +96,14 @@ def scrape(
         encoding="utf-8",
     )
 
-    # Summary table
     table = Table(title="Scraping summary", show_header=True, header_style="bold cyan")
     table.add_column("Metric")
     table.add_column("Value", justify="right")
     table.add_row("Deals collected", str(len(result.deals)))
-    table.add_row("Jobs completed", str(result.jobs_completed))
-    table.add_row("Jobs failed", str(result.jobs_failed))
+    table.add_row("Listings completed", str(result.listings_completed))
+    table.add_row("Listings failed", str(result.listings_failed))
+    table.add_row("Categories represented", str(len(result.categories)))
+    table.add_row("Locations represented", str(len(result.locations)))
     table.add_row("Merchants", str(len(result.merchants)))
     table.add_row(
         "Duration (s)",
@@ -113,29 +113,81 @@ def scrape(
     console.print(f"\n[green]✓[/green] Written to [bold]{output}[/bold]")
 
 
+# typer renames `scrape_cmd` to `scrape-cmd` by default; we want plain `scrape`
+app.command(name="scrape")(scrape_cmd)
+
+
 @app.command()
-def list_seeds(
-    seeds: Path = typer.Option(
-        Path(__file__).parent.parent.parent / "data" / "seeds.json"
+def embed(
+    input_path: Path = typer.Argument(..., help="Path to scraped.json"),
+    sqlite_path: Path = typer.Option(
+        Path("../data/deals.sqlite"), "--sqlite", help="Output SQLite path"
     ),
+    provider: str = typer.Option(
+        "openai", "--provider", help="Embeddings provider: openai | ollama"
+    ),
+    log_level: str = typer.Option("INFO", "--log-level"),
 ) -> None:
-    """Show available cities and categories in the current seeds.json."""
+    """Generate embeddings and load deals into SQLite."""
+    _setup_logging(log_level)
+    from groupon_ingest.embedder import embed_and_write  # noqa: PLC0415
+    from groupon_ingest.models import ScrapingResult  # noqa: PLC0415
+
+    raw = input_path.read_text(encoding="utf-8")
+    result = ScrapingResult.model_validate_json(raw)
+    console.print(
+        f"Loaded [bold]{len(result.deals)}[/bold] deals from {input_path}"
+    )
+
+    embed_and_write(result.deals, sqlite_path, provider=provider)  # type: ignore[arg-type]
+    console.print(
+        f"\n[green]✓[/green] {len(result.deals)} deals + embeddings written to "
+        f"[bold]{sqlite_path}[/bold]"
+    )
+
+
+@app.command()
+def ingest(
+    output_json: Path = typer.Option(
+        Path("../data/scraped.json"), "--json", help="Intermediate JSON path"
+    ),
+    sqlite_path: Path = typer.Option(
+        Path("../data/deals.sqlite"), "--sqlite", help="Output SQLite path"
+    ),
+    seeds: Path = typer.Option(_default_seeds_path, "--seeds"),
+    kinds: str = typer.Option("all", "--kinds"),
+    slugs: str = typer.Option("all", "--slugs"),
+    max_per_listing: int = typer.Option(10, "--max", "-m"),
+    provider: str = typer.Option("openai", "--provider"),
+    log_level: str = typer.Option("INFO", "--log-level"),
+) -> None:
+    """Full pipeline: scrape + embed + load (one command)."""
+    scrape_cmd(
+        output=output_json,
+        seeds=seeds,
+        kinds=kinds,
+        slugs=slugs,
+        max_per_listing=max_per_listing,
+        no_headless=False,
+        log_level=log_level,
+    )
+    embed(input_path=output_json, sqlite_path=sqlite_path, provider=provider, log_level=log_level)
+
+
+@app.command(name="list-seeds")
+def list_seeds_cmd(
+    seeds: Path = typer.Option(_default_seeds_path, "--seeds"),
+) -> None:
+    """Show available listings in the current seeds.json."""
     data = load_seeds(seeds)
-
-    cities_table = Table(title="Cities", show_header=True, header_style="bold cyan")
-    cities_table.add_column("Slug")
-    cities_table.add_column("Name")
-    for city in data["locations"]:
-        cities_table.add_row(city["slug"], city["name"])
-    console.print(cities_table)
-
-    cats_table = Table(title="Categories", show_header=True, header_style="bold cyan")
-    cats_table.add_column("Slug")
-    cats_table.add_column("Name")
-    cats_table.add_column("URL path")
-    for cat in data["categories"]:
-        cats_table.add_row(cat["slug"], cat["name"], cat["url_path"])
-    console.print(cats_table)
+    table = Table(title="Listings", show_header=True, header_style="bold cyan")
+    table.add_column("Kind")
+    table.add_column("Slug")
+    table.add_column("Name")
+    table.add_column("URL")
+    for item in data["listings"]:
+        table.add_row(item["kind"], item["slug"], item["name"], item["url_path"])
+    console.print(table)
 
 
 @app.command()
@@ -164,6 +216,28 @@ def doctor() -> None:
         console.print(f"[green]✓[/green] pydantic {pydantic.VERSION}")
     except ImportError:
         issues.append("pydantic not installed")
+
+    try:
+        import camoufox  # noqa: F401
+
+        console.print("[green]✓[/green] camoufox installed (required for Cloudflare bypass)")
+    except ImportError:
+        issues.append(
+            "camoufox not installed — `uv pip install camoufox[geoip] && python -m camoufox fetch`"
+        )
+
+    try:
+        import sqlite_vec  # noqa: F401
+
+        console.print("[green]✓[/green] sqlite-vec installed")
+    except ImportError:
+        issues.append("sqlite-vec not installed — needed for embeddings storage")
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if api_key:
+        console.print("[green]✓[/green] OPENAI_API_KEY present")
+    else:
+        console.print("[yellow]![/yellow] OPENAI_API_KEY not set (only matters if using OpenAI embeddings)")
 
     if issues:
         console.print("\n[red]Issues found:[/red]")

@@ -9,9 +9,11 @@ authors = [{ name = "Diego Perez Garcia", email = "diego@diegoperez.dev" }]
 
 dependencies = [
     "scrapling[fetchers]>=0.4.8",
+    "camoufox[geoip]>=0.4.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "sqlite-utils>=3.37",
+    "sqlite-vec>=0.1.6",
     "openai>=1.55.0",
     "httpx>=0.27.0",
     "typer>=0.13.0",

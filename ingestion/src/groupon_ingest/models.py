@@ -7,7 +7,7 @@ NormalizedDeal is what gets persisted — strict, validated, deduplicated.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -72,15 +72,16 @@ class Merchant(BaseModel):
     deal_count: int = 0
 
 
-class ScrapeJob(BaseModel):
-    """A single (location, category) combo to scrape."""
+class Listing(BaseModel):
+    """A /ofertas/{slug} listing page configured in seeds.json."""
 
-    location_slug: str
-    location_name: str
-    category_slug: str
-    category_name: str
-    listing_url: str
-    max_deals: int = 10
+    kind: Literal["city", "category"]
+    slug: str
+    name: str
+    url_path: str
+
+    def full_url(self, base_url: str) -> str:
+        return f"{base_url.rstrip('/')}{self.url_path}"
 
 
 class ScrapingResult(BaseModel):
@@ -90,8 +91,8 @@ class ScrapingResult(BaseModel):
     categories: list[Category]
     locations: list[Location]
     merchants: list[Merchant]
-    jobs_completed: int
-    jobs_failed: int
+    listings_completed: int
+    listings_failed: int
     started_at: datetime
     finished_at: datetime
     notes: list[str] = Field(default_factory=list)

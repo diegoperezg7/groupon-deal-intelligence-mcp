@@ -1,25 +1,26 @@
 {
   "base_url": "https://www.groupon.es",
-  "locations": [
-    { "slug": "madrid", "name": "Madrid" },
-    { "slug": "barcelona", "name": "Barcelona" },
-    { "slug": "valencia", "name": "Valencia" },
-    { "slug": "sevilla", "name": "Sevilla" },
-    { "slug": "bilbao", "name": "Bilbao" }
-  ],
-  "categories": [
-    { "slug": "belleza-y-relax", "name": "Belleza y relax", "url_path": "belleza-y-relax" },
-    { "slug": "cosas-que-hacer", "name": "Cosas que hacer", "url_path": "cosas-que-hacer" },
-    { "slug": "restaurantes", "name": "Restaurantes", "url_path": "restaurantes" },
-    { "slug": "escapadas", "name": "Escapadas", "url_path": "escapadas" },
-    { "slug": "cursos-y-talleres", "name": "Cursos y talleres", "url_path": "cursos-y-talleres" },
-    { "slug": "bienestar", "name": "Bienestar", "url_path": "bienestar" },
-    { "slug": "estetica", "name": "Estetica", "url_path": "estetica" },
-    { "slug": "electronica", "name": "Electronica", "url_path": "electronica" }
+  "_comment": "groupon.es URL structure: /ofertas/{slug} is a listing (slug can be a city or a category). Individual deals live at /deals/{slug} with NO city/category in the path. We scrape multiple listings and infer category/location per-deal from the deal page itself.",
+  "listings": [
+    { "kind": "city",     "slug": "madrid",        "name": "Madrid",        "url_path": "/ofertas/madrid" },
+    { "kind": "city",     "slug": "barcelona",     "name": "Barcelona",     "url_path": "/ofertas/barcelona" },
+    { "kind": "city",     "slug": "valencia",      "name": "Valencia",      "url_path": "/ofertas/valencia" },
+    { "kind": "city",     "slug": "sevilla",       "name": "Sevilla",       "url_path": "/ofertas/sevilla" },
+    { "kind": "city",     "slug": "bilbao",        "name": "Bilbao",        "url_path": "/ofertas/bilbao" },
+    { "kind": "city",     "slug": "malaga",        "name": "Malaga",        "url_path": "/ofertas/malaga" },
+    { "kind": "city",     "slug": "zaragoza",      "name": "Zaragoza",      "url_path": "/ofertas/zaragoza" },
+    { "kind": "category", "slug": "belleza",       "name": "Belleza",       "url_path": "/ofertas/belleza" },
+    { "kind": "category", "slug": "gastronomia",   "name": "Gastronomia",   "url_path": "/ofertas/gastronomia" },
+    { "kind": "category", "slug": "cosas-que-hacer", "name": "Cosas que hacer", "url_path": "/ofertas/cosas-que-hacer" },
+    { "kind": "category", "slug": "escapadas",     "name": "Escapadas",     "url_path": "/ofertas/escapadas" },
+    { "kind": "category", "slug": "bienestar",     "name": "Bienestar",     "url_path": "/ofertas/bienestar" },
+    { "kind": "category", "slug": "cursos",        "name": "Cursos",        "url_path": "/ofertas/cursos" },
+    { "kind": "category", "slug": "regalos",       "name": "Regalos",       "url_path": "/ofertas/regalos" }
   ],
   "notes": [
-    "Listing URL pattern: {base_url}/deals/{location.slug}/{category.url_path}",
-    "If a (location, category) combo returns 0 deals, log and continue.",
-    "Some locations may not have all categories — that's expected."
+    "Each /ofertas/{slug} listing exposes ~9 deals via SSR (more behind JS lazy-loading).",
+    "We fetch all listings, deduplicate /deals/{slug} URLs globally, and visit each deal page once.",
+    "Category and location for each deal are inferred from the deal-page breadcrumb, not from the listing URL — because Groupon's deals can be cross-listed in multiple /ofertas/{x} surfaces.",
+    "Empty or 404 listings are logged and skipped without failing the run."
   ]
 }

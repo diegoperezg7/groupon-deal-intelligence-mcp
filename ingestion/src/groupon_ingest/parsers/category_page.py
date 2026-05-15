@@ -1,7 +1,11 @@
-"""Parse a groupon.es category listing page to extract individual deal URLs.
+"""Parse a groupon.es /ofertas/{slug} listing page to extract deal URLs.
 
-Strategy: be tolerant. Try several selector variants because groupon.es A/B
-tests its layouts. We log when a selector fails and fall back to the next.
+groupon.es renders ~9 deals server-side per listing; the rest load via
+JS scroll. We accept this — combining multiple listings (cities +
+categories) and global deduplication is the cheaper path to coverage.
+
+The only reliable selector across layouts is the href pattern itself:
+all deal pages live at /deals/<slug>.
 """
 
 from __future__ import annotations
@@ -11,51 +15,35 @@ from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
 
-# Selector candidates ordered from most-specific to most-permissive.
-# Each is tried in turn until one returns at least 5 matches.
-DEAL_LINK_SELECTORS = [
-    "a[data-bhc='dealcard']",
-    "a[data-testid='deal-card']",
-    "div[data-bhw='DealCard'] a",
-    "a.deal-card-link",
-    "a[href*='/deals/'][href*='-']",  # last resort: any /deals/<slug>/<deal-slug>/ link
-]
-
 
 def _is_deal_url(href: str) -> bool:
-    """A deal URL on groupon.es looks like /deals/<location>/<deal-slug>."""
+    """A deal URL on groupon.es is /deals/<single-slug>, no extra path."""
     try:
         path = urlparse(href).path
     except Exception:
         return False
     parts = [p for p in path.split("/") if p]
-    # We want /deals/<location-slug>/<deal-slug>, ignoring category index pages
-    return len(parts) >= 3 and parts[0] == "deals" and not parts[-1].startswith("c-")
+    return len(parts) >= 2 and parts[0] == "deals" and not parts[1].startswith("c-")
 
 
 def extract_deal_urls(page, base_url: str = "https://www.groupon.es") -> list[str]:
-    """Return the unique, fully-qualified deal URLs found on a category page."""
+    """Return the unique, fully-qualified deal URLs found on a listing page."""
     found: set[str] = set()
 
-    for selector in DEAL_LINK_SELECTORS:
-        try:
-            anchors = page.css(selector)
-        except Exception as exc:
-            logger.debug("Selector %s raised: %s", selector, exc)
+    try:
+        anchors = page.css('a[href*="/deals/"]')
+    except Exception as exc:
+        logger.warning("Failed to query anchors: %s", exc)
+        return []
+
+    for anchor in anchors:
+        href = anchor.attrib.get("href", "")
+        if not href:
             continue
+        absolute = urljoin(base_url, href)
+        if _is_deal_url(absolute):
+            found.add(absolute.split("?")[0].rstrip("/"))
 
-        for anchor in anchors:
-            href = anchor.attrib.get("href", "")
-            if not href:
-                continue
-            absolute = urljoin(base_url, href)
-            if _is_deal_url(absolute):
-                found.add(absolute.split("?")[0])  # strip tracking params
-
-        if len(found) >= 5:
-            logger.debug(
-                "Selector %s yielded %d deal URLs (taking it)", selector, len(found)
-            )
-            break
-
-    return sorted(found)
+    sorted_urls = sorted(found)
+    logger.debug("Extracted %d deal URLs", len(sorted_urls))
+    return sorted_urls

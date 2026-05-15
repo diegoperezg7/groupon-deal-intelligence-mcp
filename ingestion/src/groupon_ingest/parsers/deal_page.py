@@ -1,14 +1,24 @@
 """Parse a single groupon.es deal page into a ScrapedDeal.
 
-We extract permissively: every field is best-effort, missing data is logged
-but doesn't fail the page. Normalization (price -> cents, percent parsing,
-slug derivation) happens in normalizer.py.
+Strategy (most robust to least):
+1. **JSON-LD structured data**. Groupon embeds Schema.org Product /
+   ProductGroup / HealthAndBeautyBusiness blocks plus a BreadcrumbList.
+   This is the primary source of truth — Schema.org is contractually
+   stable and survives layout changes.
+2. **data-testid attributes**. Stable across A/B tests because they
+   exist for QA tooling. Used for price/discount that don't always
+   appear in JSON-LD.
+3. **OpenGraph meta tags**. Always present, useful for description
+   and image fallback.
+4. **DOM heuristics**. Last resort, fragile.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+from typing import Any
 from urllib.parse import urlparse
 
 from groupon_ingest.models import ScrapedDeal
@@ -16,8 +26,196 @@ from groupon_ingest.models import ScrapedDeal
 logger = logging.getLogger(__name__)
 
 
+# Canonical Spanish city slugs we recognise in breadcrumb labels and titles
+SPANISH_CITY_SLUGS = {
+    "madrid",
+    "barcelona",
+    "valencia",
+    "sevilla",
+    "bilbao",
+    "malaga",
+    "zaragoza",
+    "alicante",
+    "granada",
+    "murcia",
+    "palma",
+    "cordoba",
+    "vigo",
+    "gijon",
+    "santander",
+    "pamplona",
+}
+
+# Map breadcrumb / keyword tokens to canonical category slugs
+CATEGORY_KEYWORD_MAP: list[tuple[str, str]] = [
+    # Order matters: more specific first
+    ("belleza", "belleza"),
+    ("estetic", "belleza"),
+    ("spa", "bienestar"),
+    ("masaje", "bienestar"),
+    ("wellness", "bienestar"),
+    ("bienestar", "bienestar"),
+    ("balneario", "bienestar"),
+    ("gastronom", "gastronomia"),
+    ("restaurant", "gastronomia"),
+    ("comer", "gastronomia"),
+    ("cena", "gastronomia"),
+    ("brunch", "gastronomia"),
+    ("escapad", "escapadas"),
+    ("hotel", "escapadas"),
+    ("viaje", "escapadas"),
+    ("rural", "escapadas"),
+    ("curso", "cursos"),
+    ("taller", "cursos"),
+    ("formaci", "cursos"),
+    ("cine", "cosas-que-hacer"),
+    ("entrad", "cosas-que-hacer"),
+    ("ocio", "cosas-que-hacer"),
+    ("actividad", "cosas-que-hacer"),
+    ("aventura", "cosas-que-hacer"),
+    ("parque", "cosas-que-hacer"),
+    ("zoo", "cosas-que-hacer"),
+    ("musical", "cosas-que-hacer"),
+    ("escape", "cosas-que-hacer"),
+    ("regalo", "regalos"),
+    ("electronic", "electronica"),
+    ("itv", "automocion"),
+    ("coche", "automocion"),
+    ("automoci", "automocion"),
+    ("optic", "salud"),
+    ("dental", "salud"),
+    ("medic", "salud"),
+    ("salud", "salud"),
+    ("servicios", "servicios"),
+]
+
+
+# ----------------------------------------------------------------------
+# JSON-LD extraction
+# ----------------------------------------------------------------------
+
+
+def _extract_jsonld_blocks(page) -> list[Any]:
+    """Return a flat list of decoded JSON-LD blocks. Tolerant to arrays."""
+    blocks: list[Any] = []
+    try:
+        scripts = page.css('script[type="application/ld+json"]')
+    except Exception:
+        return blocks
+    for sc in scripts:
+        text = sc.text if hasattr(sc, "text") else None
+        if not text:
+            continue
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            logger.debug("Skipping non-JSON JSON-LD block")
+            continue
+        if isinstance(decoded, list):
+            blocks.extend(decoded)
+        else:
+            blocks.append(decoded)
+    return blocks
+
+
+def _find_block(blocks: list[Any], type_keywords: list[str]) -> dict[str, Any] | None:
+    """Return the first JSON-LD block whose @type matches any keyword."""
+    lower_keywords = [k.lower() for k in type_keywords]
+    for blk in blocks:
+        if not isinstance(blk, dict):
+            continue
+        types = blk.get("@type")
+        if isinstance(types, str):
+            types = [types]
+        if not isinstance(types, list):
+            continue
+        for t in types:
+            if any(k in str(t).lower() for k in lower_keywords):
+                return blk
+    return None
+
+
+def _normalise_image(img: Any) -> str | None:
+    if isinstance(img, str):
+        return img
+    if isinstance(img, list) and img:
+        first = img[0]
+        if isinstance(first, str):
+            return first
+        if isinstance(first, dict):
+            return first.get("url")
+    if isinstance(img, dict):
+        return img.get("url")
+    return None
+
+
+def _extract_from_jsonld(page, url: str) -> dict[str, Any]:
+    """Return a partial dict of fields extracted from JSON-LD."""
+    blocks = _extract_jsonld_blocks(page)
+    out: dict[str, Any] = {}
+
+    product = _find_block(
+        blocks, ["ProductGroup", "Product", "HealthAndBeautyBusiness", "LocalBusiness", "Offer"]
+    )
+    if product:
+        out["title"] = product.get("name")
+        out["description"] = product.get("description")
+        out["image_url"] = _normalise_image(product.get("image"))
+
+        # Brand / merchant
+        brand = product.get("brand")
+        if isinstance(brand, dict):
+            out["merchant_name"] = brand.get("name")
+        elif isinstance(brand, str):
+            out["merchant_name"] = brand
+
+        # Offers (price)
+        offers = product.get("offers")
+        if isinstance(offers, list) and offers:
+            offers = offers[0]
+        if isinstance(offers, dict):
+            price = offers.get("price") or offers.get("lowPrice")
+            if price is not None:
+                out["price_raw"] = f"{price} €"
+            high_price = offers.get("highPrice")
+            if high_price:
+                out["original_price_raw"] = f"{high_price} €"
+
+        # Aggregate rating
+        rating = product.get("aggregateRating")
+        if isinstance(rating, dict):
+            val = rating.get("ratingValue")
+            if val is not None:
+                out["rating_raw"] = str(val)
+            cnt = rating.get("reviewCount") or rating.get("ratingCount")
+            if cnt is not None:
+                out["reviews_count_raw"] = str(cnt)
+
+    # Breadcrumb gives us category and (sometimes) location
+    crumb = _find_block(blocks, ["BreadcrumbList"])
+    if crumb:
+        items = crumb.get("itemListElement") or []
+        breadcrumb_labels = []
+        for it in items:
+            if isinstance(it, dict):
+                label = it.get("name") or (
+                    it.get("item", {}).get("name") if isinstance(it.get("item"), dict) else None
+                )
+                if label:
+                    breadcrumb_labels.append(str(label))
+        out["_breadcrumb"] = breadcrumb_labels
+    else:
+        out["_breadcrumb"] = []
+
+    return out
+
+
+# ----------------------------------------------------------------------
+# DOM fallback helpers
+# ----------------------------------------------------------------------
+
+
 def _first_text(page, selectors: list[str]) -> str | None:
-    """Try multiple selectors and return the first text match."""
     for sel in selectors:
         try:
             element = page.css_first(sel)
@@ -42,69 +240,102 @@ def _meta_content(page, selector: str) -> str | None:
     return element.attrib.get("content")
 
 
-def _derive_slug_from_url(url: str) -> str:
-    """e.g. https://www.groupon.es/deals/madrid/spa-paraiso → spa-paraiso"""
-    path = urlparse(url).path
-    parts = [p for p in path.split("/") if p]
-    return parts[-1] if parts else url
+# ----------------------------------------------------------------------
+# Inference helpers
+# ----------------------------------------------------------------------
 
 
-def _derive_location_from_url(url: str) -> str | None:
-    path = urlparse(url).path
-    parts = [p for p in path.split("/") if p]
-    if len(parts) >= 2 and parts[0] == "deals":
-        return parts[1]
+def _infer_location(url: str, breadcrumb: list[str], title: str | None) -> str | None:
+    haystacks: list[str] = [b.lower() for b in breadcrumb]
+    haystacks.append(urlparse(url).path.lower())
+    if title:
+        haystacks.append(title.lower())
+    for city in SPANISH_CITY_SLUGS:
+        for hay in haystacks:
+            if city in hay:
+                return city
     return None
 
 
-def parse_deal_page(page, url: str, category_slug: str | None = None) -> ScrapedDeal:
+def _infer_category(breadcrumb: list[str], title: str | None, url: str) -> str | None:
+    haystacks: list[str] = [b.lower() for b in breadcrumb]
+    if title:
+        haystacks.append(title.lower())
+    haystacks.append(urlparse(url).path.lower())
+    for keyword, slug in CATEGORY_KEYWORD_MAP:
+        for hay in haystacks:
+            if keyword in hay:
+                return slug
+    return None
+
+
+# ----------------------------------------------------------------------
+# Public entrypoint
+# ----------------------------------------------------------------------
+
+
+def parse_deal_page(
+    page,
+    url: str,
+    fallback_category: str | None = None,
+    fallback_location: str | None = None,
+) -> ScrapedDeal:
     """Extract structured fields from a deal page (best-effort)."""
 
-    title = _first_text(
+    # 1) JSON-LD — primary source of truth
+    jsonld = _extract_from_jsonld(page, url)
+    breadcrumb: list[str] = jsonld.pop("_breadcrumb", []) or []
+
+    # 2) DOM fallbacks for fields JSON-LD didn't give us
+    title = jsonld.get("title") or _first_text(
         page,
         [
+            "[data-testid='deal-title']",
             "h1[data-bhc='deal-title']",
             "h1.deal-title",
-            "h1[itemprop='name']",
             "h1",
         ],
-    )
+    ) or _meta_content(page, "meta[property='og:title']")
 
-    description = _first_text(
+    description = jsonld.get("description") or _first_text(
         page,
         [
+            "[data-testid='deal-description']",
             "div[data-bhc='deal-pitch']",
             "div.deal-pitch",
             "div[itemprop='description']",
         ],
-    ) or _meta_content(page, "meta[name='description']")
+    ) or _meta_content(page, "meta[name='description']") or _meta_content(
+        page, "meta[property='og:description']"
+    )
 
-    merchant_name = _first_text(
+    merchant_name = jsonld.get("merchant_name") or _first_text(
         page,
         [
             "a[data-bhc='merchant-name']",
+            "a[data-testid='merchant-name']",
             "span.merchant-name",
             "a.merchant-link",
-            "[itemprop='brand']",
         ],
     )
 
-    price_raw = _first_text(
+    price_raw = jsonld.get("price_raw") or _first_text(
         page,
         [
+            "[data-testid='green-price']",
+            "[data-testid='promotion-price']",
+            "[data-testid='deal-price']",
             "[data-bhc='deal-price']",
             "span.price",
-            "[itemprop='price']",
-            ".deal-price",
         ],
     )
 
-    original_price_raw = _first_text(
+    original_price_raw = jsonld.get("original_price_raw") or _first_text(
         page,
         [
+            "[data-testid='strike-through-price']",
+            "[data-testid='original-price']",
             "[data-bhc='original-price']",
-            "span.original-price",
-            "span.was-price",
             "del",
         ],
     )
@@ -112,33 +343,43 @@ def parse_deal_page(page, url: str, category_slug: str | None = None) -> Scraped
     discount_raw = _first_text(
         page,
         [
+            "[data-testid='discount']",
             "[data-bhc='discount']",
-            ".discount-badge",
-            "span.discount",
+            "[class*='discount']",
         ],
     )
 
-    rating_raw = _first_text(
+    rating_raw = jsonld.get("rating_raw") or _first_text(
         page,
         [
-            "[data-bhc='rating']",
             "[itemprop='ratingValue']",
-            ".rating-value",
+            "[data-testid='rating']",
+            "[class*='rating-value']",
         ],
     )
 
-    reviews_count_raw = _first_text(
+    reviews_count_raw = jsonld.get("reviews_count_raw") or _first_text(
         page,
         [
-            "[data-bhc='reviews-count']",
             "[itemprop='reviewCount']",
-            ".reviews-count",
+            "[data-testid='reviews-count']",
+            "[class*='reviews-count']",
         ],
     )
 
-    image_url = _meta_content(page, "meta[property='og:image']")
+    image_url = jsonld.get("image_url") or _meta_content(
+        page, "meta[property='og:image']"
+    ) or _meta_content(page, "meta[name='twitter:image']")
 
-    # Heuristic discount fallback: derive from prices if both present
+    # 3) Inference: category + location from breadcrumb / URL / title
+    inferred_location = (
+        _infer_location(url, breadcrumb, title) or fallback_location
+    )
+    inferred_category = (
+        _infer_category(breadcrumb, title, url) or fallback_category
+    )
+
+    # 4) Heuristic discount fallback when only the two prices are present
     if discount_raw is None and price_raw and original_price_raw:
         price_match = re.search(r"(\d+[.,]?\d*)", price_raw)
         original_match = re.search(r"(\d+[.,]?\d*)", original_price_raw)
@@ -157,8 +398,8 @@ def parse_deal_page(page, url: str, category_slug: str | None = None) -> Scraped
         title=title,
         description=description,
         merchant_name=merchant_name,
-        category_slug=category_slug,
-        location_slug=_derive_location_from_url(url),
+        category_slug=inferred_category,
+        location_slug=inferred_location,
         price_raw=price_raw,
         original_price_raw=original_price_raw,
         discount_raw=discount_raw,
@@ -169,5 +410,7 @@ def parse_deal_page(page, url: str, category_slug: str | None = None) -> Scraped
 
     if title is None:
         logger.warning("No title extracted for %s", url)
+    if inferred_category is None:
+        logger.debug("No category inferred for %s (breadcrumb=%s)", url, breadcrumb)
 
     return deal
