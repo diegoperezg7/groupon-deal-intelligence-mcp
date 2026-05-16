@@ -16,6 +16,8 @@
 
 > Submitted as the Foundry Challenge for the **AI Fullstack Engineer — Nodegraph** role at Groupon. The brief asked for an MCP server that any MCP client can connect to and use to answer questions about groupon.es deals — built to demonstrate engineering taste, AI tooling fluency and product thinking in a deliberately under-specified problem.
 
+> ⏱ **Effort: ~8 hours across two days (2026-05-15 / 2026-05-16).** Past the brief's 5-hour guideline by choice. The 5-hour version would have been MCP server + CLI + sample data. The extra hours went into a third interface (the web chat in `web/`) proving the MCP contract end-to-end with a real LLM, a real scraped dataset, and explicit trade-off / next-steps docs — full reasoning in [Time spent](#time-spent) at the bottom. The git history is the ground truth.
+
 ---
 
 ## TL;DR
