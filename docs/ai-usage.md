@@ -37,7 +37,7 @@ So here's the honest version, written by me, not the model.
 ## What I did NOT use AI for
 
 - Choosing the company-facing pitch (the README's "Why MCP and CLI" framing, the Nodegraph alignment story, the "deterministic-then-LLM" principle).
-- Deciding to ship the take-home in 5 hours with a committed sample dataset rather than 20 hours chasing volume.
+- Deciding to ship the take-home in ~8 hours with a committed sample dataset rather than chase volume. The 5-hour version would have been MCP + CLI + sample data; the extra hours went into a third interface (the web chat) and explicit trade-off docs — past the brief's 5-hour guideline by choice, documented in the README's "Time spent" section.
 - Writing this `docs/ai-usage.md`. (I wrote this directly.)
 
 ## Verifying

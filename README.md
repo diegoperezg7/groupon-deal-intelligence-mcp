@@ -599,7 +599,15 @@ groupon-deal-intelligence-mcp/
 
 ## Time spent
 
-**~5 hours focused work** on 2026-05-15. The repo history reflects the real flow — first commit at 11:05 local, last by ~16:00, with one round-trip to inspect real groupon.es HTML when my first URL pattern returned 404s.
+**~8 hours of focused work** across 2026-05-15 and 2026-05-16. Past the 5-hour guideline the brief suggested. The brief invited me to *"ship what you have with a note on what you'd do next"* — instead I kept going on the items I judged most informative for an evaluation:
+
+- A third interface (the web chat in `web/`) to prove the MCP contract end-to-end with a real LLM (xAI Grok) rather than describing it on paper.
+- A real, scraped dataset (77 deals from groupon.es) rather than synthetic fixtures.
+- Explicit trade-off and next-steps docs so the gaps are visible rather than hidden.
+
+The 5-hour version would have been MCP server + CLI + sample data — roughly what existed in the first commit cluster ending 2026-05-15 ~13:08. Everything past that point is honest in the git history.
+
+What I'd add next is documented in [`docs/next-steps.md`](docs/next-steps.md).
 
 ---
 
